@@ -1,0 +1,114 @@
+let SessionLoad = 1
+if &cp | set nocp | endif
+let s:so_save = &so | let s:siso_save = &siso | set so=0 siso=0
+let v:this_session=expand("<sfile>:p")
+silent only
+silent tabonly
+cd ~/projects/curses/src
+if expand('%') == '' && !&modified && line('$') <= 1 && getline(1) == ''
+  let s:wipebuf = bufnr('%')
+endif
+set shortmess=aoO
+argglobal
+%argdel
+$argadd main.c
+edit ~/projects/curses/src/main.cpp
+set splitbelow splitright
+set nosplitbelow
+set nosplitright
+wincmd t
+set winminheight=0
+set winheight=1
+set winminwidth=0
+set winwidth=1
+argglobal
+setlocal fdm=indent
+setlocal fde=0
+setlocal fmr={{{,}}}
+setlocal fdi=#
+setlocal fdl=99
+setlocal fml=1
+setlocal fdn=20
+setlocal fen
+47
+normal! zo
+60
+normal! zo
+205
+normal! zo
+215
+normal! zo
+218
+normal! zo
+222
+normal! zo
+230
+normal! zo
+269
+normal! zo
+273
+normal! zo
+282
+normal! zo
+285
+normal! zo
+288
+normal! zo
+292
+normal! zo
+309
+normal! zo
+310
+normal! zo
+383
+normal! zo
+385
+normal! zo
+387
+normal! zo
+437
+normal! zo
+456
+normal! zo
+458
+normal! zo
+460
+normal! zo
+467
+normal! zo
+480
+normal! zo
+488
+normal! zo
+495
+normal! zo
+497
+normal! zo
+512
+normal! zo
+let s:l = 294 - ((8 * winheight(0) + 15) / 31)
+if s:l < 1 | let s:l = 1 | endif
+exe s:l
+normal! zt
+294
+normal! 021|
+tabnext 1
+badd +65 ~/projects/curses/src/main.cpp
+badd +60 ~/.vim/_vimrc
+badd +10 ~/projects/curses/src/Makefile
+if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0
+  silent exe 'bwipe ' . s:wipebuf
+endif
+unlet! s:wipebuf
+set winheight=1 winwidth=20 shortmess=ac
+set winminheight=1 winminwidth=1
+let s:sx = expand("<sfile>:p:r")."x.vim"
+if file_readable(s:sx)
+  exe "source " . fnameescape(s:sx)
+endif
+let &so = s:so_save | let &siso = s:siso_save
+let g:this_session = v:this_session
+let g:this_obsession = v:this_session
+doautoall SessionLoadPost
+unlet SessionLoad
+" vim: set ft=vim :
