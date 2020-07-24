@@ -4,7 +4,7 @@ let s:so_save = &so | let s:siso_save = &siso | set so=0 siso=0
 let v:this_session=expand("<sfile>:p")
 silent only
 silent tabonly
-cd ~/projects/curses/src
+cd ~/projects/Bomber/src
 if expand('%') == '' && !&modified && line('$') <= 1 && getline(1) == ''
   let s:wipebuf = bufnr('%')
 endif
@@ -12,7 +12,7 @@ set shortmess=aoO
 argglobal
 %argdel
 $argadd main.c
-edit ~/projects/curses/src/main.cpp
+edit ~/projects/Bomber/src/main.cpp
 set splitbelow splitright
 set nosplitbelow
 set nosplitright
@@ -30,70 +30,79 @@ setlocal fdl=99
 setlocal fml=1
 setlocal fdn=20
 setlocal fen
-47
+73
 normal! zo
-60
+81
 normal! zo
-205
+115
 normal! zo
-215
+239
 normal! zo
-218
+249
 normal! zo
-222
+268
 normal! zo
-230
+274
 normal! zo
-269
+276
 normal! zo
-273
+278
 normal! zo
-282
+344
 normal! zo
-285
+346
 normal! zo
-288
+353
 normal! zo
-292
+358
 normal! zo
-309
+361
 normal! zo
-310
+365
 normal! zo
-383
+438
 normal! zo
-385
+442
 normal! zo
-387
-normal! zo
-437
+447
 normal! zo
 456
 normal! zo
-458
+455
 normal! zo
-460
+485
 normal! zo
-467
+487
 normal! zo
-480
+489
 normal! zo
-488
+592
 normal! zo
-495
+606
 normal! zo
-497
+608
 normal! zo
-512
+610
 normal! zo
-let s:l = 294 - ((8 * winheight(0) + 15) / 31)
+638
+normal! zo
+695
+normal! zo
+701
+normal! zo
+703
+normal! zo
+705
+normal! zo
+let s:l = 417 - ((11 * winheight(0) + 15) / 31)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-294
-normal! 021|
+417
+normal! 036|
 tabnext 1
-badd +65 ~/projects/curses/src/main.cpp
+badd +1 ~/projects/Bomber/src/main.cpp
+badd +1 ~/projects/Bomber/src/main.c
 badd +60 ~/.vim/_vimrc
 badd +10 ~/projects/curses/src/Makefile
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0
@@ -103,7 +112,7 @@ unlet! s:wipebuf
 set winheight=1 winwidth=20 shortmess=ac
 set winminheight=1 winminwidth=1
 let s:sx = expand("<sfile>:p:r")."x.vim"
-if file_readable(s:sx)
+if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &so = s:so_save | let &siso = s:siso_save
