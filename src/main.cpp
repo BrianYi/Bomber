@@ -8,7 +8,32 @@
 #include <algorithm>
 using namespace std;
 
+#define WIDTH       60
+#define HEIGHT      30
+#define INFO_WIDTH  60
+#define INFO_HEIGHT 6
+#define GAME_WIDTH  43
+#define GAME_HEIGHT 23
+#define CHAT_WIDTH  (INFO_WIDTH - GAME_WIDTH)
+#define CHAT_HEIGHT GAME_HEIGHT
+#define TIME_TICKS_MS 10
+
+#define MONSTER0_SPEED 1000
+#define MONSTER1_SPEED 800
+#define MONSTER2_SPEED 600
+#define MONSTER3_SPEED 400
+#define MONSTER4_SPEED 200
+#define MONSTER5_SPEED 100
+
 #define msleep(ms) usleep(ms * 1000)
+
+enum
+{
+    START_GAME,
+    JOIN_GAME,
+    ABOUT,
+    EXIT,
+};
 
 enum
 {
@@ -40,19 +65,36 @@ enum
     BLOCK_BOMBUP,   // '#' block(bomb up)
     BLOCK_SPEEDUP,  // '#' block(speed up)
     BLOCK_TIMER,    // '#' block(timer)
+    BOMBING0,       // 'X' bombing fire shape
+    BOMBING1,       // 'x' bombing fire shape
+};
+
+struct Elem
+{
+    Elem(int px, int py, int ic):
+        x(px),y(py),icon(ic){};
+    int x,y;
+    int icon;
 };
 
 struct Bomb
 {
     Bomb(int px, int py, int bbtime, int ic, int pw):
-        x(px),y(py),bombtime(bbtime),timetobomb(bbtime),changetime(100),timetochange(100),icon(ic),power(pw){};
+        x(px),y(py),bombtime(bbtime),timetobomb(bbtime),changetime(100),timetochange(100),
+        bombingtime(200),timetobombingfinish(200),bombingicon(BOMBING0),
+        icon(ic),power(pw),isfirstbombing(true){};
     int x,y;
     int bombtime;
     int timetobomb;  
     int changetime;
     int timetochange;
+    int bombingtime;
+    int timetobombingfinish;
+    int bombingicon;
     int icon;
     int power;
+    bool isfirstbombing;
+    vector<Elem> dieds;
 };
 
 struct Player
@@ -84,12 +126,12 @@ struct Monster
 struct Monster0: public Monster
 {
     Monster0(int px, int py):
-        Monster(px,py,MONSTER0,1000){}
+        Monster(px,py,MONSTER0,MONSTER0_SPEED){}
 };
 struct Monster1: public Monster
 {
     Monster1(int px, int py):
-        Monster(px,py,MONSTER1,800){}
+        Monster(px,py,MONSTER1,MONSTER1_SPEED){}
 };
 struct Monster2: public Monster
 {
@@ -186,13 +228,6 @@ void generate_data(int w, int h, int nblock, int nMonster0,int nMonster1,int nMo
     }
 }
 
-#define INFO_WIDTH  60
-#define INFO_HEIGHT 6
-#define GAME_WIDTH  43
-#define GAME_HEIGHT 23
-#define CHAT_WIDTH  (INFO_WIDTH - GAME_WIDTH)
-#define CHAT_HEIGHT GAME_HEIGHT
-#define TIME_TICKS_MS 10
 
 void refresh_info_win(WINDOW *ptrInfoWin)
 {
@@ -203,13 +238,203 @@ void refresh_info_win(WINDOW *ptrInfoWin)
 void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<Monster*>& monsters, Player& player, int passedms)
 {
     /*
-     * monster move
+     * bombing action
      */
     int dx[] = {-1,1,0,0};
     int dy[] = {0,0,-1,1};
     int x, y, h, w, ch;
     h = mapArry.size();
     w = mapArry[0].size();
+    for (auto it = player.bomb.begin(); it != player.bomb.end(); )
+    {
+        if (it->timetobomb > 0)
+        {
+            /*
+             * not boming
+             */
+            it->timetochange -= passedms;
+            it->timetobomb -= passedms;
+            if (it->timetochange < 0)
+            {
+                if (it->icon == BOMB_SMALL)
+                    it->icon = BOMB_BIG;
+                else
+                    it->icon = BOMB_SMALL;
+                it->timetochange = it->changetime;
+                mapArry[it->y][it->x] = it->icon;
+            }
+        }
+        else
+        {
+            /*
+             * start bombing
+             */
+            it->timetobombingfinish -= passedms;
+            if (it->timetobombingfinish < 0) // bombing finished
+            {
+                it=player.bomb.erase(it);
+                for (auto& deadelem : it->dieds)
+                {
+                    switch (deadelem.icon)
+                    {
+                        case EMPTY:          // ' '                    
+                        case STONE:          // '@' stone
+                        case BOMB_SMALL:     // 'o' bomb
+                        case BOMB_BIG:       // 'O' 
+                            break;
+                        case MONSTER0:       // '0' monster
+                        case MONSTER1:       // '1' monster
+                        case MONSTER2:       // '2' monster
+                        case MONSTER3:       // '3' monster
+                        case MONSTER4:       // '4' monster
+                        case MONSTER5:       // '5' monster
+                        case MONSTER_DEAD:   // 'x' monster dead
+                            mapArry[deadelem.y][deadelem.x] = EMPTY;
+                            break;
+                        case PLAYER0:        // 'a' 
+                        case PLAYER1:        // 'b'
+                        case PLAYER2:        // 'c'
+                        case PLAYER3:        // 'd'
+                            // TODO:  player died
+                            break;
+                        case DOOR:           // '$' door to next level
+                            // TODO: spawn monsters
+                            break;
+                        case POWERUP:        // 'P' power up
+                        case LIFEUP:         // 'L' life up
+                        case BOMBUP:         // 'B' bomb up
+                        case SPEEDUP:        // 'S' speed up
+                        case TIMER:          // 'T' timer
+                            break;
+                        case BLOCK:          // '#' block with nothing
+                            mapArry[deadelem.y][deadelem.x] = EMPTY;
+                            break;
+                        case BLOCK_DOOR:     // '$' door 
+                            mapArry[deadelem.y][deadelem.x]=DOOR;
+                            break;
+                        case BLOCK_POWERUP:  // '#' block(power up)
+                            mapArry[deadelem.y][deadelem.x]=POWERUP;
+                            break;
+                        case BLOCK_LIFEUP:   // '#' block(life up)
+                            mapArry[deadelem.y][deadelem.x]=LIFEUP;
+                            break;
+                        case BLOCK_BOMBUP:   // '#' block(bomb up)
+                            mapArry[deadelem.y][deadelem.x]=BOMBUP;
+                            break;
+                        case BLOCK_SPEEDUP:  // '#' block(speed up)
+                            mapArry[deadelem.y][deadelem.x]=SPEEDUP;
+                            break;
+                        case BLOCK_TIMER:    // '#' block(timer)
+                            mapArry[deadelem.y][deadelem.x]=TIMER;
+                            break;
+                        default:
+                            break;
+                    }
+                }
+                continue;
+            }
+            else // during the bombing
+            {
+                if (it->timetobombingfinish < 100) // change bombing shape
+                    it->bombingicon = BOMBING1;
+
+                if (it->isfirstbombing)
+                {
+                    it->isfirstbombing=false;
+                    mapArry[it->y][it->x] = it->bombingicon;
+                    for (int i=0;i<4;++i)
+                    {
+                        bool flag=false;    // has bombed in this direction
+                        for (int k=1;k<=it->power;++k)
+                        {
+                            int nx=it->x+k*dx[i],ny=it->y+k*dy[i];
+                            if (nx<0||nx>=w||ny<0||ny>=h) break;
+                            switch (mapArry[ny][nx])
+                            {
+                                case EMPTY:          // ' '                    
+                                    mapArry[ny][nx] = it->bombingicon;
+                                    break;
+                                case STONE:          // '@' stone
+                                    flag=true;
+                                    break;
+                                case BOMB_SMALL:     // 'o' bomb
+                                case BOMB_BIG:       // 'O' 
+                                    flag=true;
+                                    break;
+                                case MONSTER0:       // '0' monster
+                                case MONSTER1:       // '1' monster
+                                case MONSTER2:       // '2' monster
+                                case MONSTER3:       // '3' monster
+                                case MONSTER4:       // '4' monster
+                                case MONSTER5:       // '5' monster
+                                    mapArry[ny][nx] = it->bombingicon;
+                                    break;
+                                case MONSTER_DEAD:   // 'x' monster dead
+                                    mapArry[ny][nx] = it->bombingicon;
+                                    break;
+                                case PLAYER0:        // 'a' 
+                                case PLAYER1:        // 'b'
+                                case PLAYER2:        // 'c'
+                                case PLAYER3:        // 'd'
+                                    // TODO:  player died
+                                    break;
+                                case DOOR:           // '$' door to next level
+                                    // TODO: spawn monsters
+                                    flag=true;
+                                    break;
+                                case POWERUP:        // 'P' power up
+                                case LIFEUP:         // 'L' life up
+                                case BOMBUP:         // 'B' bomb up
+                                case SPEEDUP:        // 'S' speed up
+                                case TIMER:          // 'T' timer
+                                    flag=true;
+                                    break;
+                                case BLOCK:          // '#' block with nothing
+                                    it->dieds.push_back(Elem(ny,nx,mapArry[ny][nx]));
+                                    flag=true;
+                                    break;
+                                case BLOCK_DOOR:     // '$' door 
+                                    it->dieds.push_back(Elem(ny,nx,mapArry[ny][nx]));
+                                    flag=true;
+                                    break;
+                                case BLOCK_POWERUP:  // '#' block(power up)
+                                    it->dieds.push_back(Elem(ny,nx,mapArry[ny][nx]));
+                                    flag=true;
+                                    break;
+                                case BLOCK_LIFEUP:   // '#' block(life up)
+                                    it->dieds.push_back(Elem(ny,nx,mapArry[ny][nx]));
+                                    flag=true;
+                                    break;
+                                case BLOCK_BOMBUP:   // '#' block(bomb up)
+                                    it->dieds.push_back(Elem(ny,nx,mapArry[ny][nx]));
+                                    flag=true;
+                                    break;
+                                case BLOCK_SPEEDUP:  // '#' block(speed up)
+                                    it->dieds.push_back(Elem(ny,nx,mapArry[ny][nx]));
+                                    flag=true;
+                                    break;
+                                case BLOCK_TIMER:    // '#' block(timer)
+                                    it->dieds.push_back(Elem(ny,nx,mapArry[ny][nx]));
+                                    flag=true;
+                                    break;
+                                default:
+                                    perror("error");
+                                    exit(0);
+                                    break;
+                            }
+                            if (flag) break;
+                        }
+                    }
+
+                }
+            }
+        }
+        it++;
+    }
+
+    /*
+     * monster move
+     */
     for (auto it = monsters.begin(); it != monsters.end(); )
     {
         auto ptrMon = *it;
@@ -251,129 +476,27 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                 {
                     case EMPTY:
                         ptrMon->x = x, ptrMon->y = y;
+                        mapArry[ptrMon->y][ptrMon->x] = ptrMon->icon;
                         break;
                     case PLAYER0:
                     case PLAYER1:
                     case PLAYER2:
                     case PLAYER3:
+                        mapArry[ptrMon->y][ptrMon->x] = ptrMon->icon;
+                        break;
+                    case BOMBING0:
+                    case BOMBING1:
+                        ptrMon->isdead = true;
+                        break;
+                    default:
+                        mapArry[ptrMon->y][ptrMon->x] = ptrMon->icon;
                         break;
                 }
-                mapArry[ptrMon->y][ptrMon->x] = ptrMon->icon;
             }
         }
         it++;
     }
 
-    for (auto it = player.bomb.begin(); it != player.bomb.end(); )
-    {
-        it->timetobomb -= passedms;
-        it->timetochange -= passedms;
-        if (it->timetochange < 0)
-        {
-            if (it->icon == BOMB_SMALL)
-                it->icon = BOMB_BIG;
-            else
-                it->icon = BOMB_SMALL;
-            it->timetochange = it->changetime;
-        }
-        mapArry[it->y][it->x] = it->icon;
-        if (it->timetobomb < 0)
-        {
-            mapArry[it->y][it->x] = EMPTY;
-            for (int i=0;i<4;++i)
-            {
-                bool flag=false;    // has bombed in this direction
-                for (int k=1;k<=it->power;++k)
-                {
-                    int nx=it->x+k*dx[i],ny=it->y+k*dy[i];
-                    if (nx<0||nx>=w||ny<0||ny>=h) break;
-                    switch (mapArry[ny][nx])
-                    {
-                        case EMPTY:          // ' '                    
-                            break;
-                        case STONE:          // '@' stone
-                            flag = true;
-                            break;
-                        case BOMB_SMALL:     // 'o' bomb
-                            flag = true;
-                            break;
-                        case BOMB_BIG:       // 'O' 
-                            flag = true;
-                            break;
-                        case MONSTER0:       // '0' monster
-                        case MONSTER1:       // '1' monster
-                        case MONSTER2:       // '2' monster
-                        case MONSTER3:       // '3' monster
-                        case MONSTER4:       // '4' monster
-                        case MONSTER5:       // '5' monster
-                            find_if(monsters.begin(), monsters.end(), [&](Monster* ptrMon){
-                                    if (ptrMon->x == nx && ptrMon->y == ny)
-                                    {
-                                    ptrMon->isdead = true;
-                                    return true;
-                                    }
-                                    return false;
-                                    });
-                            break;
-                        case MONSTER_DEAD:   // 'x' monster dead
-                            break;
-                        case PLAYER0:        // 'a' 
-                        case PLAYER1:        // 'b'
-                        case PLAYER2:        // 'c'
-                        case PLAYER3:        // 'd'
-                            // TODO:  player died
-                            break;
-                        case DOOR:           // '$' door to next level
-                            // TODO: spawn monsters
-                            flag = true;
-                            break;
-                        case POWERUP:        // 'P' power up
-                        case LIFEUP:         // 'L' life up
-                        case BOMBUP:         // 'B' bomb up
-                        case SPEEDUP:        // 'S' speed up
-                        case TIMER:          // 'T' timer
-                            flag = true;
-                            break;
-                        case BLOCK:          // '#' block with nothing
-                            mapArry[ny][nx]=EMPTY;
-                            flag = true;
-                            break;
-                        case BLOCK_DOOR:     // '$' door 
-                            mapArry[ny][nx]=DOOR;
-                            flag = true;
-                            break;
-                        case BLOCK_POWERUP:  // '#' block(power up)
-                            mapArry[ny][nx]=POWERUP;
-                            flag = true;
-                            break;
-                        case BLOCK_LIFEUP:   // '#' block(life up)
-                            mapArry[ny][nx]=LIFEUP;
-                            flag = true;
-                            break;
-                        case BLOCK_BOMBUP:   // '#' block(bomb up)
-                            mapArry[ny][nx]=BOMBUP;
-                            flag = true;
-                            break;
-                        case BLOCK_SPEEDUP:  // '#' block(speed up)
-                            mapArry[ny][nx]=SPEEDUP;
-                            flag = true;
-                            break;
-                        case BLOCK_TIMER:    // '#' block(timer)
-                            mapArry[ny][nx]=TIMER;
-                            flag = true;
-                            break;
-                        default:
-                            flag = false;
-                            break;
-                    }
-                    if (flag) break;
-                }
-            }
-            it=player.bomb.erase(it);
-            continue;
-        }    
-        it++;
-    }
 
     /*
      * map
@@ -432,15 +555,61 @@ void refresh_chat_win(WINDOW *ptrChatWin)
     wrefresh(ptrChatWin);
 }
 
-int main(int argc, char** argv)
+void refresh_welcome_win(WINDOW* ptrWelcomeWin, int choose)
+{
+    char buf[COLS];
+    int len;
+    int x,y;
+    int w,h;
+    getmaxyx(ptrWelcomeWin,h,w);
+    int attr = A_BOLD;
+
+    len = snprintf(buf,sizeof(buf),"Start Game");
+    x = (w-len)/2;
+    y = h/5;
+    wattroff(ptrWelcomeWin,attr);
+    if (choose == START_GAME) wattrset(ptrWelcomeWin,attr);
+    if (mvwprintw(ptrWelcomeWin,y,x,"%s",buf)==ERR)
+    {
+        perror("error");exit(0);
+    }
+
+    len = snprintf(buf,sizeof(buf),"Join Game");
+    x = (w-len)/2;
+    y += h/5;
+    wattroff(ptrWelcomeWin,attr);
+    if (choose == JOIN_GAME) wattrset(ptrWelcomeWin,attr);
+    if (mvwprintw(ptrWelcomeWin,y,x,"%s",buf)==ERR)
+    {
+        perror("error");exit(0);
+    }
+
+    len = snprintf(buf,sizeof(buf),"About");
+    x = (w-len)/2;
+    y += h/5;
+    wattroff(ptrWelcomeWin,attr);
+    if (choose == ABOUT) wattrset(ptrWelcomeWin,attr);
+    if (mvwprintw(ptrWelcomeWin,y,x,"%s",buf)==ERR)
+    {
+        perror("error");exit(0);
+    }
+    
+    len = snprintf(buf,sizeof(buf),"Exit");
+    x = (w-len)/2;
+    y += h/5;
+    wattroff(ptrWelcomeWin,attr);
+    if (choose == EXIT) wattrset(ptrWelcomeWin,attr);
+    if (mvwprintw(ptrWelcomeWin,y,x,"%s",buf)==ERR)
+    {
+        perror("error");exit(0);
+    }
+
+    touchwin(ptrWelcomeWin);
+    wrefresh(ptrWelcomeWin);        
+}
+void start_game()
 {
     int ch;
-    initscr();
-    cbreak();
-    noecho();
-    keypad(stdscr,TRUE);
-    nodelay(stdscr,true);
-    curs_set(0);
     WINDOW *ptrInfoWin = newwin(INFO_HEIGHT,INFO_WIDTH,0,0);
     box(ptrInfoWin, ACS_VLINE, ACS_HLINE);
     WINDOW *ptrGameWin = newwin(GAME_HEIGHT, GAME_WIDTH, INFO_HEIGHT, 0);
@@ -450,7 +619,8 @@ int main(int argc, char** argv)
     vector<Monster*> monsters;
     vector<vector<int>> mapArry;
     Player player(0,0,PLAYER0);
-    generate_data(GAME_WIDTH-2, GAME_HEIGHT-2, 200, 3,3,3,3,3,3, 1, 3, 1, 1, 1, 1, mapArry, monsters,player);
+    generate_data(GAME_WIDTH-2, GAME_HEIGHT-2, 200, 
+            3,3,3,3,3,3, 1, 3, 1, 1, 1, 1, mapArry, monsters,player);
     for(;;)
     {
         if ((ch = tolower(getch())) != ERR)
@@ -514,6 +684,93 @@ exit:
     delwin(ptrInfoWin);
     delwin(ptrGameWin);
     delwin(ptrChatWin);
+}
+
+void join_game()
+{
+    /*
+     * for multiplayer
+     */ 
+}
+
+void about_game()
+{
+    /*
+     * game introduction
+     */
+}
+
+void exit_game()
+{
+    /*
+     * exit game
+     */
+    exit(0);
+}
+
+void game_loop()
+{
+    int ch;
+    WINDOW *ptrWelcomeWin = newwin(HEIGHT,WIDTH,0,0);
+    box(ptrWelcomeWin,ACS_VLINE,ACS_HLINE);
+    int choose = START_GAME;
+    for(;;)
+    {
+        if ((ch = getch()) != ERR)
+        {
+            switch (ch)
+            {
+                case KEY_UP:
+                    if (choose>START_GAME) choose--;
+                    break;
+                case KEY_DOWN:
+                    if (choose<EXIT) choose++;
+                    break;
+                case '\n':
+                    switch (choose)
+                    {
+                        case START_GAME:
+                            start_game();
+                            break;
+                        case JOIN_GAME:
+                            join_game();
+                            break;
+                        case ABOUT:
+                            about_game();
+                            break;
+                        case EXIT:
+                            exit_game();
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+        refresh_welcome_win(ptrWelcomeWin, choose);
+        msleep(TIME_TICKS_MS);
+    }
+}
+
+int main(int argc, char** argv)
+{
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr,TRUE);
+    nodelay(stdscr,true);
+    curs_set(0);
+    if (!has_colors())
+    {
+        exit(1);    
+    }
+    if (start_color()!=OK)
+    {
+        exit(1);
+    }
+    game_loop();
     endwin();
     exit(0);
 }
