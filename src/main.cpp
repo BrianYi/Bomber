@@ -1,3 +1,6 @@
+#include <asm-generic/errno.h>
+#include <climits>
+#include <sys/poll.h>
 #include <unistd.h>
 #include <curses.h>
 #include <stdio.h>
@@ -6,8 +9,12 @@
 #include <ctype.h> 
 #include <vector>
 #include <algorithm>
+#include <string>
+#include <queue>
+#include "unp.h"
 using namespace std;
 
+#define SERVER_PORT 34567
 #define WIDTH       60
 #define HEIGHT      31
 #define INFO_WIDTH  WIDTH
@@ -33,7 +40,10 @@ using namespace std;
 #define MONSTER5_SCORE  60
 
 #define SUPERMAN_TIME   30000
-#define BOMB_TIME       3000
+#define BOMB_BOMB_TIME  3000
+
+#define BOMB_BOMBING_TIME   200
+#define BOMB_CHANGE_TIME    100
 
 #define msleep(ms) usleep(ms * 1000)
 
@@ -88,10 +98,10 @@ struct Elem
 
 struct Bomb
 {
-    Bomb(int px, int py, int bbtime, int ic, int pw):
-        x(px),y(py),bombtime(bbtime),timetobomb(bbtime),changetime(100),timetochange(100),
-        bombingtime(200),timetobombingfinish(200),bombingicon(BOMBING0),
-        icon(ic),power(pw),isfirstbombing(true){};
+    Bomb(int px, int py, int bbtime, int ic, int pw, bool tmbomb):
+        x(px),y(py),bombtime(bbtime),timetobomb(bbtime),changetime(BOMB_CHANGE_TIME),timetochange(BOMB_CHANGE_TIME),
+        bombingtime(BOMB_BOMBING_TIME),timetobombingfinish(BOMB_BOMBING_TIME),bombingicon(BOMBING0),
+        icon(ic),power(pw),isfirstbombing(1),timerbomb(tmbomb){};
     int x,y;
     int bombtime;
     int timetobomb;  
@@ -103,13 +113,31 @@ struct Bomb
     int icon;
     int power;
     bool isfirstbombing;
+    bool timerbomb;
     vector<Elem> dieds;
+};
+
+struct Network
+{
+    Network():
+        isopen(0),listenfd(-1){}
+    bool isopen;
+    int listenfd;
+    vector<int> fdplayers;
+};
+
+struct Msg
+{
+    Msg(int n, char* dat):
+        len(n),data(dat){}
+    int len;
+    char *data;
 };
 
 struct Player
 {
     Player(int px, int py, int ic):
-        x(px),y(py),icon(ic),score(0),life(1),bombnum(1),bombtime(BOMB_TIME),bombpower(1),timerbomb(0),superman(1),
+        x(px),y(py),icon(ic),score(0),life(1),bombnum(1),bombtime(BOMB_BOMB_TIME),bombpower(1),timerbomb(0),superman(0),
         supermantime(SUPERMAN_TIME),timetosupermanfinish(0),savedicon(EMPTY){};
     int x,y;
     int icon;
@@ -123,8 +151,11 @@ struct Player
     int supermantime;
     int timetosupermanfinish;
     int savedicon;
+    Network net;
     vector<Bomb> bomb;
+    queue<Msg> msgQue;
 };
+
 
 struct Monster
 {
@@ -135,8 +166,6 @@ struct Monster
     const int actiontime;
     int timetoaction;
     int score;
-//    bool isdead;
-//    int deadtime;
 };
 
 struct Monster0: public Monster
@@ -171,8 +200,85 @@ struct Monster5: public Monster
 };
 
 
-void generate_data(int w, int h, int nblock, int nMonster0,int nMonster1,int nMonster2,int nMonster3,int nMonster4, int nMonster5,
-        int nBOMB_POWER_UP, int nlifeup, int nBOMB_NUM_UP, int nSUPERMAN, int ntimer, int ndoor,
+void* th_receiver(void *arg)
+{
+    Player* player = (Player*)arg;
+    struct pollfd client[_POSIX_OPEN_MAX];
+    struct sockaddr servaddr,cliaddr;
+    bzero(&servaddr,sizeof(servaddr));
+    socklen_t len = sizeof(servaddr);
+    int i,maxi,nready,connfd,sockfd;
+    int n;
+    char buf[MAXLINE];
+    socklen_t clilen;
+    int listenfd = Tcp_listen("localhost",to_string(SERVER_PORT).c_str(),&len);
+    player->net.listenfd = listenfd;
+    client[0].fd = listenfd; 
+    client[0].events = POLLRDNORM;
+    for (i=1;i<_POSIX_OPEN_MAX;++i)
+        client[i].fd = -1;
+    maxi=0;
+    for(;;)
+    {
+        nready = Poll(client, maxi+1, INFTIM);
+        if (client[0].revents & POLLRDNORM)
+        {
+            clilen = sizeof(cliaddr);
+            connfd = Accept(listenfd, (SA *)&cliaddr, &clilen);
+            for (i = 1; i < _POSIX_OPEN_MAX; ++i)
+            {
+                if (client[i].fd < 0)
+                {
+                    client[i].fd = connfd;
+                    player->net.fdplayers.push_back(connfd);
+                    break;
+                }
+            }
+            if (i == _POSIX_OPEN_MAX)
+                err_quit("too many clients");
+            client[i].events = POLLRDNORM;
+            if (i > maxi)
+                maxi = i;
+            if (--nready <= 0)
+                continue;
+        }
+        for (i = 1; i <= maxi; ++i)
+        {
+            if ((sockfd = client[i].fd) < 0)
+                continue;
+            if (client[i].revents & (POLLRDNORM | POLLERR))
+            {
+                if ((n = read(sockfd, buf, MAXLINE)) < 0)
+                {
+                    if (errno == ECONNRESET)
+                    {
+                        Close(sockfd);
+                        client[i].fd = -1;
+                    } else
+                        err_sys("read error");
+                } else if (n == 0) {
+                    Close(sockfd);
+                    client[i].fd = -1;
+                } else { // received data
+                    if (buf[n-1] == '\n')
+                    {
+                        char* p = new char[n];
+                        memcpy(p, buf, n);
+                        player->msgQue.push(Msg(n,p));
+                    }
+                    else
+                        err_sys("read data incomplete");
+                }
+                if (--nready <= 0)
+                    break;
+            }
+        }
+    }
+}
+
+void generate_data(int w, int h, int nblock, 
+        int nbomb_power_up, int nlifeup, int nbomb_num_up, int nsuperman, int ntimer, int ndoor,
+        int nMonster0,int nMonster1,int nMonster2,int nMonster3,int nMonster4, int nMonster5,
         vector<vector<int>>& outMapArry, vector<Monster*>& outMonsters, Player& player)
 {
     int x, y;
@@ -187,7 +293,7 @@ void generate_data(int w, int h, int nblock, int nMonster0,int nMonster1,int nMo
         }
     }
     srand(time(0));
-    while (nblock > 0)
+    while (ndoor>0||nbomb_power_up>0||nlifeup>0||nbomb_num_up>0||nsuperman>0||ntimer>0||nblock>0)
     {
         y = rand() % h;
         x = rand() % w;
@@ -195,27 +301,48 @@ void generate_data(int w, int h, int nblock, int nMonster0,int nMonster1,int nMo
          * block, fake door, power up, life up, bomb up, superman, timer
          */
         if (outMapArry[y][x] != EMPTY) continue;
-        if (ndoor > 0 && ndoor--)
+        if (ndoor > 0)
+        {
             outMapArry[y][x] = BLOCK_DOOR;
-        else if (nBOMB_POWER_UP > 0 && nBOMB_POWER_UP--)
+            ndoor--;
+        }
+        else if (nbomb_power_up > 0)
+        {
             outMapArry[y][x] = BLOCK_BOMB_POWER_UP;
-        else if (nlifeup > 0 && nlifeup--)
+            nbomb_power_up--;
+        }
+        else if (nlifeup > 0)
+        {
             outMapArry[y][x] = BLOCK_LIFEUP;
-        else if (nBOMB_NUM_UP > 0 && nBOMB_NUM_UP--)
+            nlifeup--;
+        }
+        else if (nbomb_num_up > 0)
+        {
             outMapArry[y][x] = BLOCK_BOMB_NUM_UP;
-        else if (nSUPERMAN > 0 && nSUPERMAN--)
+            nbomb_num_up--;
+        }
+        else if (nsuperman > 0)
+        {
             outMapArry[y][x] = BLOCK_SUPERMAN;
-        else if (ntimer > 0 && ntimer--)
+            nsuperman--;
+        }
+        else if (ntimer > 0)
+        {
             outMapArry[y][x] = BLOCK_TIMER_BOMB;
-        else if (nblock > 0 && nblock--)
+            ntimer--;
+        }
+        else if (nblock > 0)
+        {
             outMapArry[y][x] = BLOCK;
+            nblock--;
+        }
         else
         {
             perror("error!");
             exit(0);
         }
     }
-    while (nMonster5 > 0)
+    while (nMonster5 > 0||nMonster4 > 0||nMonster3 > 0||nMonster2 > 0||nMonster1 > 0||nMonster0 > 0)
     {
         x = rand() % w;
         y = rand() % h;
@@ -223,18 +350,36 @@ void generate_data(int w, int h, int nblock, int nMonster0,int nMonster1,int nMo
         /*
          * keep track of monster's move
          */
-        if (nMonster0 > 0 && nMonster0--)
+        if (nMonster0 > 0)
+        {
             outMonsters.push_back(new struct Monster0(x,y));
-        else if (nMonster1 > 0 && nMonster1--)
+            nMonster0--;
+        }
+        else if (nMonster1 > 0)
+        {
             outMonsters.push_back(new struct Monster1(x, y));
-        else if (nMonster2 > 0 && nMonster2--)
+            nMonster1--;
+        }
+        else if (nMonster2 > 0)
+        {
             outMonsters.push_back(new struct Monster2(x, y));
-        else if (nMonster3 > 0 && nMonster3--)
+            nMonster2--;
+        }
+        else if (nMonster3 > 0)
+        {
             outMonsters.push_back(new struct Monster3(x, y));
-        else if (nMonster4 > 0 && nMonster4--)
+            nMonster3--;
+        }
+        else if (nMonster4 > 0)
+        {
             outMonsters.push_back(new struct Monster4(x, y));
-        else if (nMonster5 > 0 && nMonster5--)
+            nMonster4--;
+        }
+        else if (nMonster5 > 0)
+        {
             outMonsters.push_back(new struct Monster5(x, y));
+            nMonster5--;
+        }
         else
         {
             perror("error!");
@@ -254,7 +399,7 @@ void refresh_info_win(WINDOW *ptrInfoWin, Player& player)
     snprintf(buf,sizeof(buf),"bomb_power:%-3d timerbomb:%d",
             player.bombpower, player.timerbomb);
     mvwprintw(ptrInfoWin, 2, 2, buf);
-    snprintf(buf,sizeof(buf),"superman:%02ds", player.timetosupermanfinish);
+    snprintf(buf,sizeof(buf),"superman:%02ds", player.timetosupermanfinish/1000);
     mvwprintw(ptrInfoWin, 3, 2, buf);
     snprintf(buf,sizeof(buf),"bomb_left:%-2d", (int)player.bomb.size());
     mvwprintw(ptrInfoWin, 4, 2, buf);
@@ -274,14 +419,15 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
     w = mapArry[0].size();
     for (auto it = player.bomb.begin(); it != player.bomb.end(); )
     {
-        if (it->timetobomb > 0)
+        if (it->timetobomb > 0 || it->timerbomb)
         {
             /*
              * not boming
              */
             it->timetochange -= passedms;
-            it->timetobomb -= passedms;
-            if (it->timetochange < 0)
+            if (!it->timerbomb)
+                it->timetobomb -= passedms;
+            if (it->timetochange <= 0)
             {
                 if (it->icon == BOMB_SMALL)
                     it->icon = BOMB_BIG;
@@ -291,13 +437,13 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                 mapArry[it->y][it->x] = it->icon;
             }
         }
-        else
+        if (it->timetobomb <= 0)
         {
             /*
              * start bombing
              */
             it->timetobombingfinish -= passedms;
-            if (it->timetobombingfinish < 0) // bombing finished
+            if (it->timetobombingfinish <= 0) // bombing finished
             {
                 for (auto& deadelem : it->dieds)
                 {
@@ -369,7 +515,7 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
             }
             else // during the bombing
             {
-                if (it->timetobombingfinish < 100 && it->bombingicon != BOMBING1) // change bombing shape
+                if (it->timetobombingfinish <= 100 && it->bombingicon != BOMBING1) // change bombing shape
                 {
                     it->bombingicon = BOMBING1;
                     for (auto& deadelem : it->dieds)
@@ -408,13 +554,13 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                                 case MONSTER4:       // '4' monster
                                 case MONSTER5:       // '5' monster
                                     monsters.erase(find_if(monsters.begin(),monsters.end(),[&](Monster* ptrMon){
-                                                    if (ptrMon->x==nx&&ptrMon->y==ny)
-                                                    {
-                                                        player.score += ptrMon->score;
-                                                        delete ptrMon;
-                                                        return true;
-                                                    }
-                                                    return false;
+                                                if (ptrMon->x==nx&&ptrMon->y==ny)
+                                                {
+                                                player.score += ptrMon->score;
+                                                delete ptrMon;
+                                                return true;
+                                                }
+                                                return false;
                                                 }));
                                     it->dieds.push_back(Elem(nx,ny,mapArry[ny][nx]));
                                     mapArry[ny][nx] = it->bombingicon;
@@ -474,7 +620,7 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
     {
         Monster* ptrMon = *it;
         ptrMon->timetoaction -= passedms;
-        if (ptrMon->timetoaction < 0)
+        if (ptrMon->timetoaction <= 0)
         {
             ptrMon->timetoaction = ptrMon->actiontime;
             mapArry[ptrMon->y][ptrMon->x] = EMPTY;
@@ -514,6 +660,19 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
         it++;
     }
 
+
+    /*
+     * others
+     */
+    if (player.superman)
+    {
+        player.timetosupermanfinish -= passedms;
+        if (player.timetosupermanfinish <= 0)
+        {
+            player.timetosupermanfinish = 0;
+            player.superman = false;
+        }
+    }
 
     /*
      * map
@@ -637,15 +796,17 @@ void start_game()
     vector<Monster*> monsters;
     vector<vector<int>> mapArry;
     Player player(0,0,PLAYER0);
-    generate_data(GAME_WIDTH-2, GAME_HEIGHT-2, 200, 
-            10,10,10,10,10,10, 50, 50, 50, 50, 50, 1, 
+    generate_data(GAME_WIDTH-2, GAME_HEIGHT-2, 
+            100,
+            // powerup,bombup,lifeup,superman,timer
+            20, 20, 20, 20, 20, 
+            1, 
+            10,10,10,10,10,10, 
             mapArry, monsters,player);
     for(;;)
     {
         if ((ch = tolower(getch())) != ERR)
         {
-            if (ch == KEY_UP || ch == KEY_DOWN || ch == KEY_LEFT || ch == KEY_RIGHT || ch == ' ')
-            {
                 int h = mapArry.size();
                 int w = mapArry[0].size();
                 int oldx = player.x, oldy=player.y;
@@ -673,8 +834,35 @@ void start_game()
                         if (player.bombnum > (int)player.bomb.size())
                         {
                             if (player.savedicon == EMPTY)
-                                player.bomb.push_back(Bomb(nx,ny,player.bombtime, BOMB_SMALL, player.bombpower));
+                                player.bomb.push_back(Bomb(nx,ny,player.bombtime, BOMB_SMALL, player.bombpower, player.timerbomb));
                         }
+                        break;
+                    case 's': // timer bomb
+                        if (player.timerbomb)
+                        {
+                            for (auto& b : player.bomb)
+                            {
+                                if (b.timetobomb > 0)
+                                {
+                                    b.timerbomb = false;
+                                    b.timetobomb = 0;
+                                }
+                                break;
+                            }
+                        }
+                        break;
+                    case 'o': // open network
+                    {
+                        if (!player.net.isopen)
+                        {
+                            player.net.isopen = true;
+                            pthread_t t1;
+                            pthread_create(&t1, nullptr, th_receiver, &player);
+                        }
+                        break;
+                    }
+                    case 'q':
+                        goto exit;
                         break;
                     default:
                         break;
@@ -734,6 +922,7 @@ void start_game()
                             player.savedicon=EMPTY;
                             player.x = nx, player.y = ny;
                             player.superman=true;
+                            player.timetosupermanfinish+=player.supermantime;
                             break;
                         case TIMER_BOMB:          // 'T' timer
                             player.savedicon=EMPTY;
@@ -762,19 +951,6 @@ void start_game()
                     }
                 }
                 mapArry[player.y][player.x] = player.icon;
-            }
-            else
-            {
-                switch (tolower(ch))
-                {
-                    case 'q':
-                        goto exit;
-                        break;
-                    default:
-                        break;
-                } 
-            }
-            
         }
         refresh_info_win(ptrInfoWin, player);
         refresh_game_win(ptrGameWin, mapArry, monsters, player, TIME_TICKS_MS);

@@ -86,7 +86,7 @@ get_python_inc(),
 'cpp/ycm/benchmarks/benchmark/include',
 '-std=c++17',
 '-I',
-'/usr/local/boost1.70.0/include'
+'./lib'
 ]
 
 # Clang automatically sets the '-std=' flag to 'c++14' for MSVC 2015 or later,

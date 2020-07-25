@@ -12,7 +12,7 @@ set shortmess=aoO
 argglobal
 %argdel
 $argadd .ycm_extra_conf.py
-edit ~/projects/Bomber/.gitignore
+edit ~/projects/Bomber/README.md
 set splitbelow splitright
 set nosplitbelow
 set nosplitright
@@ -30,15 +30,16 @@ setlocal fdl=99
 setlocal fml=1
 setlocal fdn=20
 setlocal fen
-let s:l = 72 - ((29 * winheight(0) + 15) / 31)
+let s:l = 5 - ((4 * winheight(0) + 13) / 26)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-72
-normal! 0
+5
+normal! 039|
 tabnext 1
-badd +72 ~/projects/Bomber/.gitignore
+badd +1 ~/projects/Bomber/README.md
 badd +1 ~/projects/Bomber/.ycm_extra_conf.py
+badd +72 ~/projects/Bomber/.gitignore
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0
   silent exe 'bwipe ' . s:wipebuf
 endif
