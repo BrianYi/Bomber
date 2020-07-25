@@ -1,5 +1,6 @@
 #include <asm-generic/errno.h>
 #include <climits>
+#include <cstring>
 #include <sys/poll.h>
 #include <unistd.h>
 #include <curses.h>
@@ -19,11 +20,14 @@ using namespace std;
 #define HEIGHT      31
 #define INFO_WIDTH  WIDTH
 #define INFO_HEIGHT 6
-#define GAME_WIDTH  43
+#define GAME_WIDTH  WIDTH//43
 #define GAME_HEIGHT 25
-#define CHAT_WIDTH  (INFO_WIDTH - GAME_WIDTH)
-#define CHAT_HEIGHT GAME_HEIGHT
+#define CHAT_WIDTH  30 //(INFO_WIDTH - GAME_WIDTH)
+#define CHAT_HEIGHT HEIGHT
 #define TIME_TICKS_MS 10
+
+#define MAX_MSG_LEN     4096
+#define MAX_CHATMSG_LEN 1024
 
 #define MONSTER0_SPEED 1000
 #define MONSTER1_SPEED 800
@@ -46,6 +50,7 @@ using namespace std;
 #define BOMB_CHANGE_TIME    100
 
 #define msleep(ms) usleep(ms * 1000)
+ 
 
 enum
 {
@@ -120,18 +125,45 @@ struct Bomb
 struct Network
 {
     Network():
-        isopen(0),listenfd(-1){}
+        isopen(0){}
     bool isopen;
-    int listenfd;
     vector<int> fdplayers;
 };
 
-struct Msg
+struct DataPacket
 {
-    Msg(int n, char* dat):
-        len(n),data(dat){}
+    DataPacket(char* dat, int n)
+    {
+        len = n;
+        data = new char[n];
+        memcpy(data,dat,n); 
+    }
+    ~DataPacket()
+    {
+        if (data)
+            delete data;
+    }
     int len;
     char *data;
+};
+
+struct ChatMsg
+{
+    ChatMsg(const char* mesg, int n)
+    {
+        len = n+1;
+        msg = new char[n+2];
+        memcpy(msg,mesg,n);
+        msg[n] = '\n';
+        msg[len]='\0';
+    }
+    ~ChatMsg()
+    {
+        if (msg)
+            delete msg;
+    }
+    int len;
+    char *msg;
 };
 
 struct Player
@@ -153,9 +185,9 @@ struct Player
     int savedicon;
     Network net;
     vector<Bomb> bomb;
-    queue<Msg> msgQue;
-};
-
+    queue<DataPacket*> packetQue;
+    queue<ChatMsg*> msgQue;
+} player(0,0,PLAYER0);
 
 struct Monster
 {
@@ -199,25 +231,39 @@ struct Monster5: public Monster
         Monster(px,py,MONSTER5,MONSTER5_SPEED,MONSTER5_SCORE){}
 };
 
+/*
+ * function macro
+ */
+#define MSGQUE_PUSH(msg,n)  player.msgQue.push(new ChatMsg(msg,n))
+#define MSGQUE_FRONT()      player.msgQue.front()
+#define MSGQUE_POP()        player.msgQue.pop()
+#define MSGQUE_EMPTY()      player.msgQue.empty()
+
 
 void* th_receiver(void *arg)
 {
-    Player* player = (Player*)arg;
     struct pollfd client[_POSIX_OPEN_MAX];
     struct sockaddr servaddr,cliaddr;
     bzero(&servaddr,sizeof(servaddr));
-    socklen_t len = sizeof(servaddr);
     int i,maxi,nready,connfd,sockfd;
     int n;
-    char buf[MAXLINE];
-    socklen_t clilen;
-    int listenfd = Tcp_listen("localhost",to_string(SERVER_PORT).c_str(),&len);
-    player->net.listenfd = listenfd;
+    char buf[MAX_MSG_LEN];
+    socklen_t clilen,servlen;
+    
+    int listenfd = Tcp_listen("localhost",nullptr,&servlen);
+    Getsockname(listenfd, &servaddr, &servlen);
+    char *p = Sock_ntop(&servaddr, servlen);
+    snprintf(buf,sizeof(buf),"your game is now opened to network, and address is %s", p);
+    MSGQUE_PUSH(buf,sizeof(buf));
+
     client[0].fd = listenfd; 
     client[0].events = POLLRDNORM;
+    
     for (i=1;i<_POSIX_OPEN_MAX;++i)
         client[i].fd = -1;
+    
     maxi=0;
+    
     for(;;)
     {
         nready = Poll(client, maxi+1, INFTIM);
@@ -230,7 +276,7 @@ void* th_receiver(void *arg)
                 if (client[i].fd < 0)
                 {
                     client[i].fd = connfd;
-                    player->net.fdplayers.push_back(connfd);
+                    player.net.fdplayers.push_back(connfd);
                     break;
                 }
             }
@@ -248,7 +294,7 @@ void* th_receiver(void *arg)
                 continue;
             if (client[i].revents & (POLLRDNORM | POLLERR))
             {
-                if ((n = read(sockfd, buf, MAXLINE)) < 0)
+                if ((n = read(sockfd, buf, MAX_MSG_LEN)) < 0)
                 {
                     if (errno == ECONNRESET)
                     {
@@ -262,9 +308,7 @@ void* th_receiver(void *arg)
                 } else { // received data
                     if (buf[n-1] == '\n')
                     {
-                        char* p = new char[n];
-                        memcpy(p, buf, n);
-                        player->msgQue.push(Msg(n,p));
+                        player.packetQue.push(new DataPacket(buf, n));
                     }
                     else
                         err_sys("read data incomplete");
@@ -279,7 +323,7 @@ void* th_receiver(void *arg)
 void generate_data(int w, int h, int nblock, 
         int nbomb_power_up, int nlifeup, int nbomb_num_up, int nsuperman, int ntimer, int ndoor,
         int nMonster0,int nMonster1,int nMonster2,int nMonster3,int nMonster4, int nMonster5,
-        vector<vector<int>>& outMapArry, vector<Monster*>& outMonsters, Player& player)
+        vector<vector<int>>& outMapArry, vector<Monster*>& outMonsters)
 {
     int x, y;
     outMapArry.resize(h,vector<int>(w,EMPTY));
@@ -390,7 +434,7 @@ void generate_data(int w, int h, int nblock,
 }
 
 
-void refresh_info_win(WINDOW *ptrInfoWin, Player& player)
+void refresh_info_win(WINDOW *ptrInfoWin)
 {
     char buf[128];
     snprintf(buf, sizeof(buf), "score:%04d life:%-2d bomb_num:%-2d", 
@@ -407,7 +451,7 @@ void refresh_info_win(WINDOW *ptrInfoWin, Player& player)
     wrefresh(ptrInfoWin);
 }
 
-void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<Monster*>& monsters, Player& player, int passedms)
+void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<Monster*>& monsters, int passedms)
 {
     /*
      * bombing action
@@ -728,6 +772,13 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
 
 void refresh_chat_win(WINDOW *ptrChatWin)
 {
+    while (!MSGQUE_EMPTY())
+    {
+        ChatMsg* ptrMsg = MSGQUE_FRONT();   
+        MSGQUE_POP();
+        wprintw(ptrChatWin, ptrMsg->msg);
+        delete ptrMsg;
+    }
     touchwin(ptrChatWin);
     wrefresh(ptrChatWin);
 }
@@ -791,18 +842,17 @@ void start_game()
     box(ptrInfoWin, ACS_VLINE, ACS_HLINE);
     WINDOW *ptrGameWin = newwin(GAME_HEIGHT, GAME_WIDTH, INFO_HEIGHT, 0);
     box(ptrGameWin, ACS_VLINE, ACS_HLINE);
-    WINDOW *ptrChatWin = newwin(CHAT_HEIGHT, CHAT_WIDTH, INFO_HEIGHT, GAME_WIDTH);
-    box(ptrChatWin, ACS_VLINE, ACS_HLINE);
+    WINDOW *ptrChatWin = newwin(CHAT_HEIGHT, CHAT_WIDTH, 1, WIDTH+1);
+    //box(ptrChatWin, ACS_VLINE, ACS_HLINE);
     vector<Monster*> monsters;
     vector<vector<int>> mapArry;
-    Player player(0,0,PLAYER0);
     generate_data(GAME_WIDTH-2, GAME_HEIGHT-2, 
             100,
             // powerup,bombup,lifeup,superman,timer
             20, 20, 20, 20, 20, 
             1, 
             10,10,10,10,10,10, 
-            mapArry, monsters,player);
+            mapArry, monsters);
     for(;;)
     {
         if ((ch = tolower(getch())) != ERR)
@@ -857,7 +907,7 @@ void start_game()
                         {
                             player.net.isopen = true;
                             pthread_t t1;
-                            pthread_create(&t1, nullptr, th_receiver, &player);
+                            pthread_create(&t1, nullptr, th_receiver, nullptr);
                         }
                         break;
                     }
@@ -952,8 +1002,8 @@ void start_game()
                 }
                 mapArry[player.y][player.x] = player.icon;
         }
-        refresh_info_win(ptrInfoWin, player);
-        refresh_game_win(ptrGameWin, mapArry, monsters, player, TIME_TICKS_MS);
+        refresh_info_win(ptrInfoWin);
+        refresh_game_win(ptrGameWin, mapArry, monsters, TIME_TICKS_MS);
         refresh_chat_win(ptrChatWin);
         msleep(TIME_TICKS_MS);
     }

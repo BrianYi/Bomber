@@ -1,10 +1,10 @@
 include ../Make.defines
 
-PROGS = main
+PROGS = bomber
 
 all: ${PROGS}
 
-main: main.o
+bomber: bomber.o
 	${CC} ${CXXFLAGS} -o $@ $< ${LIBS}
 
 clean:

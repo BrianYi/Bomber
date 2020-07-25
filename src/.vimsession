@@ -4,16 +4,20 @@ let s:so_save = &so | let s:siso_save = &siso | set so=0 siso=0
 let v:this_session=expand("<sfile>:p")
 silent only
 silent tabonly
-cd ~/projects/Bomber/src
+cd ~/projects/Bomber
 if expand('%') == '' && !&modified && line('$') <= 1 && getline(1) == ''
   let s:wipebuf = bufnr('%')
 endif
 set shortmess=aoO
 argglobal
 %argdel
-$argadd main.c
-edit ~/projects/Bomber/src/main.cpp
+$argadd src/main.c
+edit ~/projects/Bomber/.gitignore
 set splitbelow splitright
+wincmd _ | wincmd |
+split
+1wincmd k
+wincmd w
 set nosplitbelow
 set nosplitright
 wincmd t
@@ -21,6 +25,25 @@ set winminheight=0
 set winheight=1
 set winminwidth=0
 set winwidth=1
+exe '1resize ' . ((&lines * 13 + 15) / 31)
+exe '2resize ' . ((&lines * 13 + 15) / 31)
+argglobal
+terminal ++curwin ++cols=120 ++rows=13 
+setlocal fdm=indent
+setlocal fde=0
+setlocal fmr={{{,}}}
+setlocal fdi=#
+setlocal fdl=99
+setlocal fml=1
+setlocal fdn=20
+setlocal fen
+let s:l = 1 - ((0 * winheight(0) + 6) / 13)
+if s:l < 1 | let s:l = 1 | endif
+exe s:l
+normal! zt
+1
+normal! 0
+wincmd w
 argglobal
 setlocal fdm=indent
 setlocal fde=0
@@ -30,101 +53,22 @@ setlocal fdl=99
 setlocal fml=1
 setlocal fdn=20
 setlocal fen
-101
-normal! zo
-122
-normal! zo
-131
-normal! zo
-139
-normal! zo
-205
-normal! zo
-223
-normal! zo
-226
-normal! zo
-230
-normal! zo
-247
-normal! zo
-251
-normal! zo
-253
-normal! zo
-263
-normal! zo
-280
-normal! zo
-284
-normal! zo
-289
-normal! zo
-298
-normal! zo
-395
-normal! zo
-412
-normal! zo
-422
-normal! zo
-424
-normal! zo
-432
-normal! zo
-442
-normal! zo
-448
-normal! zo
-450
-normal! zo
-452
-normal! zo
-518
-normal! zo
-527
-normal! zo
-532
-normal! zo
-535
-normal! zo
-539
-normal! zo
-621
-normal! zo
-625
-normal! zo
-638
-normal! zo
-669
-normal! zo
-682
-normal! zo
-684
-normal! zo
-686
-normal! zo
-789
-normal! zo
-808
-normal! zo
-810
-normal! zo
-810
-normal! zo
-817
-normal! zo
-856
-normal! zo
-let s:l = 858 - ((13 * winheight(0) + 13) / 27)
+let s:l = 73 - ((6 * winheight(0) + 6) / 13)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-858
-normal! 029|
+73
+normal! 06|
+wincmd w
+exe '1resize ' . ((&lines * 13 + 15) / 31)
+exe '2resize ' . ((&lines * 13 + 15) / 31)
 tabnext 1
-badd +236 ~/projects/Bomber/src/main.cpp
+badd +238 ~/projects/Bomber/src/main.cpp
 badd +105 ~/.vim/_vimrc
+badd +70 ~/projects/Bomber/.gitignore
+badd +424 ~/projects/Bomber/lib/unp.h
+badd +4 ~/projects/Bomber/Makefile
+badd +7 ~/projects/Bomber/src/Makefile
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0
   silent exe 'bwipe ' . s:wipebuf
 endif
