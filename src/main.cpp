@@ -9,11 +9,11 @@
 using namespace std;
 
 #define WIDTH       60
-#define HEIGHT      30
-#define INFO_WIDTH  60
+#define HEIGHT      31
+#define INFO_WIDTH  WIDTH
 #define INFO_HEIGHT 6
 #define GAME_WIDTH  43
-#define GAME_HEIGHT 23
+#define GAME_HEIGHT 25
 #define CHAT_WIDTH  (INFO_WIDTH - GAME_WIDTH)
 #define CHAT_HEIGHT GAME_HEIGHT
 #define TIME_TICKS_MS 10
@@ -24,6 +24,16 @@ using namespace std;
 #define MONSTER3_SPEED 400
 #define MONSTER4_SPEED 200
 #define MONSTER5_SPEED 100
+
+#define MONSTER0_SCORE  10
+#define MONSTER1_SCORE  20
+#define MONSTER2_SCORE  30
+#define MONSTER3_SCORE  40
+#define MONSTER4_SCORE  50
+#define MONSTER5_SCORE  60
+
+#define SUPERMAN_TIME   30000
+#define BOMB_TIME       3000
 
 #define msleep(ms) usleep(ms * 1000)
 
@@ -52,18 +62,18 @@ enum
     PLAYER2,        // 'c'
     PLAYER3,        // 'd'
     DOOR,           // '$' door to next level
-    POWERUP,        // 'P' power up
+    BOMB_POWER_UP,        // 'P' power up
     LIFEUP,         // 'L' life up
-    BOMBUP,         // 'B' bomb up
+    BOMB_NUM_UP,         // 'B' bomb up
     SUPERMAN,       // 'S' superman
-    TIMER,          // 'T' timer
+    TIMER_BOMB,          // 'T' timer
     BLOCK,          // '#' block with nothing
     BLOCK_DOOR,     // '$' door 
-    BLOCK_POWERUP,  // '#' block(power up)
+    BLOCK_BOMB_POWER_UP,  // '#' block(power up)
     BLOCK_LIFEUP,   // '#' block(life up)
-    BLOCK_BOMBUP,   // '#' block(bomb up)
+    BLOCK_BOMB_NUM_UP,   // '#' block(bomb up)
     BLOCK_SUPERMAN,  // '#' block(superman)
-    BLOCK_TIMER,    // '#' block(timer)
+    BLOCK_TIMER_BOMB,    // '#' block(timer)
     BOMBING0,       // 'X' bombing fire shape
     BOMBING1,       // 'x' bombing fire shape
 };
@@ -99,26 +109,32 @@ struct Bomb
 struct Player
 {
     Player(int px, int py, int ic):
-        x(px),y(py),icon(ic),life(1),bombnum(10),bombtime(3000),bombpower(3),timer(false),superman(false){};
+        x(px),y(py),icon(ic),score(0),life(1),bombnum(1),bombtime(BOMB_TIME),bombpower(1),timerbomb(0),superman(1),
+        supermantime(SUPERMAN_TIME),timetosupermanfinish(0),savedicon(EMPTY){};
     int x,y;
     int icon;
+    int score;
     int life;
-    size_t bombnum;
+    int bombnum;
     int bombtime;
     int bombpower;
-    bool timer;
+    bool timerbomb;
     bool superman;
+    int supermantime;
+    int timetosupermanfinish;
+    int savedicon;
     vector<Bomb> bomb;
 };
 
 struct Monster
 {
-    Monster(int px, int py, int ic, int at):
-        x(px),y(py),icon(ic),actiontime(at),timetoaction(at){};
+    Monster(int px, int py, int ic, int at, int sco):
+        x(px),y(py),icon(ic),actiontime(at),timetoaction(at),score(sco){};
     int x,y;
     int icon;
     const int actiontime;
     int timetoaction;
+    int score;
 //    bool isdead;
 //    int deadtime;
 };
@@ -126,37 +142,37 @@ struct Monster
 struct Monster0: public Monster
 {
     Monster0(int px, int py):
-        Monster(px,py,MONSTER0,MONSTER0_SPEED){}
+        Monster(px,py,MONSTER0,MONSTER0_SPEED,MONSTER0_SCORE){}
 };
 struct Monster1: public Monster
 {
     Monster1(int px, int py):
-        Monster(px,py,MONSTER1,MONSTER1_SPEED){}
+        Monster(px,py,MONSTER1,MONSTER1_SPEED,MONSTER1_SCORE){}
 };
 struct Monster2: public Monster
 {
     Monster2(int px, int py):
-        Monster(px,py,MONSTER2,600){}
+        Monster(px,py,MONSTER2,MONSTER2_SPEED,MONSTER2_SCORE){}
 };
 struct Monster3: public Monster
 {
     Monster3(int px, int py):
-        Monster(px,py,MONSTER3,500){}
+        Monster(px,py,MONSTER3,MONSTER3_SPEED,MONSTER3_SCORE){}
 };
 struct Monster4: public Monster
 {
     Monster4(int px, int py):
-        Monster(px,py,MONSTER4,400){}
+        Monster(px,py,MONSTER4,MONSTER4_SPEED,MONSTER4_SCORE){}
 };
 struct Monster5: public Monster
 {
     Monster5(int px, int py):
-        Monster(px,py,MONSTER5,300){}
+        Monster(px,py,MONSTER5,MONSTER5_SPEED,MONSTER5_SCORE){}
 };
 
 
 void generate_data(int w, int h, int nblock, int nMonster0,int nMonster1,int nMonster2,int nMonster3,int nMonster4, int nMonster5,
-        int npowerup, int nlifeup, int nbombup, int nSUPERMAN, int ntimer, int ndoor,
+        int nBOMB_POWER_UP, int nlifeup, int nBOMB_NUM_UP, int nSUPERMAN, int ntimer, int ndoor,
         vector<vector<int>>& outMapArry, vector<Monster*>& outMonsters, Player& player)
 {
     int x, y;
@@ -181,16 +197,16 @@ void generate_data(int w, int h, int nblock, int nMonster0,int nMonster1,int nMo
         if (outMapArry[y][x] != EMPTY) continue;
         if (ndoor > 0 && ndoor--)
             outMapArry[y][x] = BLOCK_DOOR;
-        else if (npowerup > 0 && npowerup--)
-            outMapArry[y][x] = BLOCK_POWERUP;
+        else if (nBOMB_POWER_UP > 0 && nBOMB_POWER_UP--)
+            outMapArry[y][x] = BLOCK_BOMB_POWER_UP;
         else if (nlifeup > 0 && nlifeup--)
             outMapArry[y][x] = BLOCK_LIFEUP;
-        else if (nbombup > 0 && nbombup--)
-            outMapArry[y][x] = BLOCK_BOMBUP;
+        else if (nBOMB_NUM_UP > 0 && nBOMB_NUM_UP--)
+            outMapArry[y][x] = BLOCK_BOMB_NUM_UP;
         else if (nSUPERMAN > 0 && nSUPERMAN--)
             outMapArry[y][x] = BLOCK_SUPERMAN;
         else if (ntimer > 0 && ntimer--)
-            outMapArry[y][x] = BLOCK_TIMER;
+            outMapArry[y][x] = BLOCK_TIMER_BOMB;
         else if (nblock > 0 && nblock--)
             outMapArry[y][x] = BLOCK;
         else
@@ -229,8 +245,19 @@ void generate_data(int w, int h, int nblock, int nMonster0,int nMonster1,int nMo
 }
 
 
-void refresh_info_win(WINDOW *ptrInfoWin)
+void refresh_info_win(WINDOW *ptrInfoWin, Player& player)
 {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "score:%04d life:%-2d bomb_num:%-2d", 
+            player.score, player.life, player.bombnum);
+    mvwprintw(ptrInfoWin, 1, 2, buf);
+    snprintf(buf,sizeof(buf),"bomb_power:%-3d timerbomb:%d",
+            player.bombpower, player.timerbomb);
+    mvwprintw(ptrInfoWin, 2, 2, buf);
+    snprintf(buf,sizeof(buf),"superman:%02ds", player.timetosupermanfinish);
+    mvwprintw(ptrInfoWin, 3, 2, buf);
+    snprintf(buf,sizeof(buf),"bomb_left:%-2d", (int)player.bomb.size());
+    mvwprintw(ptrInfoWin, 4, 2, buf);
     touchwin(ptrInfoWin);
     wrefresh(ptrInfoWin);
 }
@@ -299,11 +326,11 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                         case DOOR:           // '$' door to next level
                             // TODO: spawn monsters
                             break;
-                        case POWERUP:        // 'P' power up
+                        case BOMB_POWER_UP:        // 'P' power up
                         case LIFEUP:         // 'L' life up
-                        case BOMBUP:         // 'B' bomb up
+                        case BOMB_NUM_UP:         // 'B' bomb up
                         case SUPERMAN:        // 'S' superman
-                        case TIMER:          // 'T' timer
+                        case TIMER_BOMB:          // 'T' timer
                             mapArry[deadelem.y][deadelem.x] = deadelem.icon;
                             break;
                         case BLOCK:          // '#' block with nothing
@@ -312,20 +339,20 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                         case BLOCK_DOOR:     // '$' door 
                             mapArry[deadelem.y][deadelem.x]=DOOR;
                             break;
-                        case BLOCK_POWERUP:  // '#' block(power up)
-                            mapArry[deadelem.y][deadelem.x]=POWERUP;
+                        case BLOCK_BOMB_POWER_UP:  // '#' block(power up)
+                            mapArry[deadelem.y][deadelem.x]=BOMB_POWER_UP;
                             break;
                         case BLOCK_LIFEUP:   // '#' block(life up)
                             mapArry[deadelem.y][deadelem.x]=LIFEUP;
                             break;
-                        case BLOCK_BOMBUP:   // '#' block(bomb up)
-                            mapArry[deadelem.y][deadelem.x]=BOMBUP;
+                        case BLOCK_BOMB_NUM_UP:   // '#' block(bomb up)
+                            mapArry[deadelem.y][deadelem.x]=BOMB_NUM_UP;
                             break;
                         case BLOCK_SUPERMAN:  // '#' block(superman)
                             mapArry[deadelem.y][deadelem.x]=SUPERMAN;
                             break;
-                        case BLOCK_TIMER:    // '#' block(timer)
-                            mapArry[deadelem.y][deadelem.x]=TIMER;
+                        case BLOCK_TIMER_BOMB:    // '#' block(timer)
+                            mapArry[deadelem.y][deadelem.x]=TIMER_BOMB;
                             break;
                         case BOMBING0:       // 'X' bombing fire shape
                         case BOMBING1:       // 'x' bombing fire shape
@@ -382,7 +409,11 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                                 case MONSTER5:       // '5' monster
                                     monsters.erase(find_if(monsters.begin(),monsters.end(),[&](Monster* ptrMon){
                                                     if (ptrMon->x==nx&&ptrMon->y==ny)
+                                                    {
+                                                        player.score += ptrMon->score;
+                                                        delete ptrMon;
                                                         return true;
+                                                    }
                                                     return false;
                                                 }));
                                     it->dieds.push_back(Elem(nx,ny,mapArry[ny][nx]));
@@ -398,20 +429,20 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                                     // TODO: spawn monsters
                                     flag=true;
                                     break;
-                                case POWERUP:        // 'P' power up
+                                case BOMB_POWER_UP:        // 'P' power up
                                 case LIFEUP:         // 'L' life up
-                                case BOMBUP:         // 'B' bomb up
+                                case BOMB_NUM_UP:         // 'B' bomb up
                                 case SUPERMAN:        // 'S' superman
-                                case TIMER:          // 'T' timer
+                                case TIMER_BOMB:          // 'T' timer
                                     flag=true;
                                     break;
                                 case BLOCK:          // '#' block with nothing
                                 case BLOCK_DOOR:     // '$' door 
-                                case BLOCK_POWERUP:  // '#' block(power up)
+                                case BLOCK_BOMB_POWER_UP:  // '#' block(power up)
                                 case BLOCK_LIFEUP:   // '#' block(life up)
-                                case BLOCK_BOMBUP:   // '#' block(bomb up)
+                                case BLOCK_BOMB_NUM_UP:   // '#' block(bomb up)
                                 case BLOCK_SUPERMAN:  // '#' block(superman)
-                                case BLOCK_TIMER:    // '#' block(timer)
+                                case BLOCK_TIMER_BOMB:    // '#' block(timer)
                                     it->dieds.push_back(Elem(nx,ny,mapArry[ny][nx]));
                                     mapArry[ny][nx] = it->bombingicon;
                                     flag=true;
@@ -441,7 +472,7 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
      */
     for (auto it = monsters.begin(); it != monsters.end(); )
     {
-        auto ptrMon = *it;
+        Monster* ptrMon = *it;
         ptrMon->timetoaction -= passedms;
         if (ptrMon->timetoaction < 0)
         {
@@ -471,6 +502,7 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                 case BOMBING0:
                 case BOMBING1:
                     it=monsters.erase(it);
+                    player.score += ptrMon->score;
                     delete ptrMon;
                     continue;
                     break;
@@ -492,35 +524,35 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
         {
             switch (mapArry[y][x])
             {
-                case EMPTY:         ch = ' '; break;// ' '                    
-                case STONE:         ch = '@'; break;// '@' stone
-                case BOMB_SMALL:    ch = 'o'; break;// 'o' bomb
-                case BOMB_BIG:      ch = 'O'; break;// 'O' bomb
-                case MONSTER0:      ch = '0'; break;// 'M' monster
-                case MONSTER1:      ch = '1'; break;// 'M' monster
-                case MONSTER2:      ch = '2'; break;// 'M' monster
-                case MONSTER3:      ch = '3'; break;// 'M' monster
-                case MONSTER4:      ch = '4'; break;// 'M' monster
-                case MONSTER5:      ch = '5'; break;// 'M' monster
-                case PLAYER0:       ch = 'a'; break;// 'a' me
-                case PLAYER1:       ch = 'b'; break;// 'b' me
-                case PLAYER2:       ch = 'c'; break;// 'c' me
-                case PLAYER3:       ch = 'd'; break;// 'd' me
-                case DOOR:          ch = '$'; break;// '$' door to next level
-                case POWERUP:       ch = 'P'; break;// 'P' power up
-                case LIFEUP:        ch = 'L'; break;// 'L' life up
-                case BOMBUP:        ch = 'B'; break;// 'B' bomb up
-                case SUPERMAN:       ch = 'S'; break;// 'S' superman
-                case TIMER:         ch = 'T'; break;// 'T' timer
-                case BLOCK:         // '#' block with nothing
-                case BLOCK_DOOR:    // '$' door 
-                case BLOCK_POWERUP: // '#' block(power up)
-                case BLOCK_LIFEUP:  // '#' block(life up)
-                case BLOCK_BOMBUP:  // '#' block(bomb up)
-                case BLOCK_SUPERMAN: // '#' block(superman)
-                case BLOCK_TIMER:   ch = '#'; break;// '#' block(timer)
-                case BOMBING0:      ch = 'X'; break;       // 'X' bombing fire shape
-                case BOMBING1:      ch = 'x'; break;       // 'x' bombing fire shape
+                case EMPTY:                 ch = ' '; break;// ' '                    
+                case STONE:                 ch = '@'; break;// '@' stone
+                case BOMB_SMALL:            ch = 'o'; break;// 'o' bomb
+                case BOMB_BIG:              ch = 'O'; break;// 'O' bomb
+                case MONSTER0:              ch = '0'; break;// 'M' monster
+                case MONSTER1:              ch = '1'; break;// 'M' monster
+                case MONSTER2:              ch = '2'; break;// 'M' monster
+                case MONSTER3:              ch = '3'; break;// 'M' monster
+                case MONSTER4:              ch = '4'; break;// 'M' monster
+                case MONSTER5:              ch = '5'; break;// 'M' monster
+                case PLAYER0:               ch = 'a'; break;// 'a' me
+                case PLAYER1:               ch = 'b'; break;// 'b' me
+                case PLAYER2:               ch = 'c'; break;// 'c' me
+                case PLAYER3:               ch = 'd'; break;// 'd' me
+                case DOOR:                  ch = '$'; break;// '$' door to next level
+                case BOMB_POWER_UP:         ch = 'P'; break;// 'P' power up
+                case LIFEUP:                ch = 'L'; break;// 'L' life up
+                case BOMB_NUM_UP:           ch = 'B'; break;// 'B' bomb up
+                case SUPERMAN:              ch = 'S'; break;// 'S' superman
+                case TIMER_BOMB:            ch = 'T'; break;// 'T' timer
+                case BLOCK:                                 // '#' block with nothing
+                case BLOCK_DOOR:                            // '$' door 
+                case BLOCK_BOMB_POWER_UP:                   // '#' block(power up)
+                case BLOCK_LIFEUP:                          // '#' block(life up)
+                case BLOCK_BOMB_NUM_UP:                     // '#' block(bomb up)
+                case BLOCK_SUPERMAN:                        // '#' block(superman)
+                case BLOCK_TIMER_BOMB:      ch = '#'; break;// '#' block(timer)
+                case BOMBING0:              ch = 'X'; break;// 'X' bombing fire shape
+                case BOMBING1:              ch = 'x'; break;// 'x' bombing fire shape
                 default:
                                     perror("erro!");
                                     exit(0);
@@ -606,7 +638,8 @@ void start_game()
     vector<vector<int>> mapArry;
     Player player(0,0,PLAYER0);
     generate_data(GAME_WIDTH-2, GAME_HEIGHT-2, 200, 
-            3,3,3,3,3,3, 1, 3, 1, 1, 1, 1, mapArry, monsters,player);
+            10,10,10,10,10,10, 50, 50, 50, 50, 50, 1, 
+            mapArry, monsters,player);
     for(;;)
     {
         if ((ch = tolower(getch())) != ERR)
@@ -615,39 +648,54 @@ void start_game()
             {
                 int h = mapArry.size();
                 int w = mapArry[0].size();
-                mapArry[player.y][player.x] = EMPTY;
+                int oldx = player.x, oldy=player.y;
                 int nx=player.x,ny=player.y;
+                int flag=false;
                 switch (tolower(ch))
                 {
                     case KEY_UP:    
                         ny--; 
+                        flag=true;
                         break;
                     case KEY_DOWN:  
                         ny++; 
+                        flag=true;
                         break;
                     case KEY_LEFT:  
                         nx--; 
+                        flag=true;
                         break;
                     case KEY_RIGHT: 
                         nx++; 
+                        flag=true;
                         break;
                     case ' ':
-                        if (player.bombnum > player.bomb.size())
-                            player.bomb.push_back(Bomb(nx,ny,player.bombtime, BOMB_SMALL, player.bombpower));
+                        if (player.bombnum > (int)player.bomb.size())
+                        {
+                            if (player.savedicon == EMPTY)
+                                player.bomb.push_back(Bomb(nx,ny,player.bombtime, BOMB_SMALL, player.bombpower));
+                        }
                         break;
                     default:
                         break;
                 }
-                if (nx>=0&&nx<w&&ny>=0&&ny<h)
+                if (flag&&nx>=0&&nx<w&&ny>=0&&ny<h) // actually moved
                 {
+                    mapArry[oldy][oldx]=player.savedicon;   // restore old icon
                     switch (mapArry[ny][nx])
                     {
                         case EMPTY:          // ' '                    
+                            player.savedicon=mapArry[ny][nx];
                             player.x = nx, player.y = ny;
                             break;
                         case STONE:          // '@' stone
                         case BOMB_SMALL:     // 'o' bomb
                         case BOMB_BIG:       // 'O' 
+                            if (player.superman)
+                            {
+                                player.savedicon=mapArry[ny][nx];
+                                player.x = nx, player.y = ny;
+                            }
                             break;
                         case MONSTER0:       // '0' monster
                         case MONSTER1:       // '1' monster
@@ -667,33 +715,43 @@ void start_game()
                             // TODO: next level
                             player.x = nx, player.y = ny;
                             break;
-                        case POWERUP:        // 'P' power up
+                        case BOMB_POWER_UP:        // 'P' power up
+                            player.savedicon=EMPTY;
                             player.x = nx, player.y = ny;
                             player.bombpower++;
                             break;
                         case LIFEUP:         // 'L' life up
+                            player.savedicon=EMPTY;
                             player.x = nx, player.y = ny;
                             player.life++;
                             break;
-                        case BOMBUP:         // 'B' bomb up
+                        case BOMB_NUM_UP:         // 'B' bomb up
+                            player.savedicon=EMPTY;
                             player.x = nx, player.y = ny;
                             player.bombnum++;
                             break;
                         case SUPERMAN:        // 'S' superman
+                            player.savedicon=EMPTY;
                             player.x = nx, player.y = ny;
                             player.superman=true;
                             break;
-                        case TIMER:          // 'T' timer
+                        case TIMER_BOMB:          // 'T' timer
+                            player.savedicon=EMPTY;
                             player.x = nx, player.y = ny;
-                            player.timer=true;
+                            player.timerbomb=true;
                             break;
                         case BLOCK:          // '#' block with nothing
                         case BLOCK_DOOR:     // '$' door 
-                        case BLOCK_POWERUP:  // '#' block(power up)
+                        case BLOCK_BOMB_POWER_UP:  // '#' block(power up)
                         case BLOCK_LIFEUP:   // '#' block(life up)
-                        case BLOCK_BOMBUP:   // '#' block(bomb up)
+                        case BLOCK_BOMB_NUM_UP:   // '#' block(bomb up)
                         case BLOCK_SUPERMAN:  // '#' block(superman)
-                        case BLOCK_TIMER:    // '#' block(timer)
+                        case BLOCK_TIMER_BOMB:    // '#' block(timer)
+                            if (player.superman)
+                            {
+                                player.savedicon=mapArry[ny][nx];
+                                player.x = nx, player.y = ny;
+                            }
                             break;
                         case BOMBING0:       // 'X' bombing fire shape
                         case BOMBING1:       // 'x' bombing fire shape
@@ -718,7 +776,7 @@ void start_game()
             }
             
         }
-        refresh_info_win(ptrInfoWin);
+        refresh_info_win(ptrInfoWin, player);
         refresh_game_win(ptrGameWin, mapArry, monsters, player, TIME_TICKS_MS);
         refresh_chat_win(ptrChatWin);
         msleep(TIME_TICKS_MS);

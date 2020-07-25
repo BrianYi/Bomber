@@ -34,77 +34,81 @@ setlocal fen
 normal! zo
 81
 normal! zo
-115
+235
 normal! zo
-239
+248
 normal! zo
-249
+258
 normal! zo
-268
+260
 normal! zo
-274
+267
 normal! zo
-276
+277
 normal! zo
-278
+283
 normal! zo
-344
+285
 normal! zo
-346
+287
 normal! zo
 353
 normal! zo
-358
+362
 normal! zo
-361
+367
 normal! zo
-365
+370
 normal! zo
-438
+374
 normal! zo
-442
-normal! zo
-447
+452
 normal! zo
 456
 normal! zo
-455
+469
 normal! zo
-485
-normal! zo
-487
-normal! zo
-489
-normal! zo
-592
+554
 normal! zo
 606
 normal! zo
-608
+621
 normal! zo
-610
+623
 normal! zo
-638
+625
 normal! zo
-695
+631
 normal! zo
-701
+644
 normal! zo
-703
+646
 normal! zo
-705
+655
 normal! zo
-let s:l = 417 - ((11 * winheight(0) + 15) / 31)
+657
+normal! zo
+772
+normal! zo
+778
+normal! zo
+780
+normal! zo
+782
+normal! zo
+789
+normal! zo
+791
+normal! zo
+let s:l = 628 - ((11 * winheight(0) + 15) / 31)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-417
-normal! 036|
+628
+normal! 017|
 tabnext 1
-badd +1 ~/projects/Bomber/src/main.cpp
-badd +1 ~/projects/Bomber/src/main.c
-badd +60 ~/.vim/_vimrc
-badd +10 ~/projects/curses/src/Makefile
+badd +654 ~/projects/Bomber/src/main.cpp
+badd +242 ~/.vim/_vimrc
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0
   silent exe 'bwipe ' . s:wipebuf
 endif

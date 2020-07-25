@@ -4,15 +4,15 @@ let s:so_save = &so | let s:siso_save = &siso | set so=0 siso=0
 let v:this_session=expand("<sfile>:p")
 silent only
 silent tabonly
-cd ~/projects/Bomber
+cd ~/projects/Bomber/lib
 if expand('%') == '' && !&modified && line('$') <= 1 && getline(1) == ''
   let s:wipebuf = bufnr('%')
 endif
 set shortmess=aoO
 argglobal
 %argdel
-$argadd .ycm_extra_conf.py
-edit ~/projects/Bomber/.gitignore
+$argadd Makefile
+edit ~/projects/Bomber/lib/Makefile
 set splitbelow splitright
 set nosplitbelow
 set nosplitright
@@ -30,15 +30,14 @@ setlocal fdl=99
 setlocal fml=1
 setlocal fdn=20
 setlocal fen
-let s:l = 72 - ((29 * winheight(0) + 15) / 31)
+let s:l = 3 - ((2 * winheight(0) + 15) / 31)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-72
-normal! 0
+3
+normal! 04|
 tabnext 1
-badd +72 ~/projects/Bomber/.gitignore
-badd +1 ~/projects/Bomber/.ycm_extra_conf.py
+badd +0 ~/projects/Bomber/lib/Makefile
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0
   silent exe 'bwipe ' . s:wipebuf
 endif
