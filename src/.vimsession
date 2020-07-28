@@ -14,10 +14,6 @@ argglobal
 $argadd src/main.c
 edit ~/projects/Bomber/.gitignore
 set splitbelow splitright
-wincmd _ | wincmd |
-split
-1wincmd k
-wincmd w
 set nosplitbelow
 set nosplitright
 wincmd t
@@ -25,25 +21,6 @@ set winminheight=0
 set winheight=1
 set winminwidth=0
 set winwidth=1
-exe '1resize ' . ((&lines * 13 + 15) / 31)
-exe '2resize ' . ((&lines * 13 + 15) / 31)
-argglobal
-terminal ++curwin ++cols=120 ++rows=13 
-setlocal fdm=indent
-setlocal fde=0
-setlocal fmr={{{,}}}
-setlocal fdi=#
-setlocal fdl=99
-setlocal fml=1
-setlocal fdn=20
-setlocal fen
-let s:l = 1 - ((0 * winheight(0) + 6) / 13)
-if s:l < 1 | let s:l = 1 | endif
-exe s:l
-normal! zt
-1
-normal! 0
-wincmd w
 argglobal
 setlocal fdm=indent
 setlocal fde=0
@@ -53,15 +30,12 @@ setlocal fdl=99
 setlocal fml=1
 setlocal fdn=20
 setlocal fen
-let s:l = 73 - ((6 * winheight(0) + 6) / 13)
+let s:l = 73 - ((13 * winheight(0) + 13) / 27)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
 73
 normal! 06|
-wincmd w
-exe '1resize ' . ((&lines * 13 + 15) / 31)
-exe '2resize ' . ((&lines * 13 + 15) / 31)
 tabnext 1
 badd +238 ~/projects/Bomber/src/main.cpp
 badd +105 ~/.vim/_vimrc

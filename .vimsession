@@ -4,15 +4,15 @@ let s:so_save = &so | let s:siso_save = &siso | set so=0 siso=0
 let v:this_session=expand("<sfile>:p")
 silent only
 silent tabonly
-cd ~/projects/Bomber
+cd ~/projects/Bomber/src
 if expand('%') == '' && !&modified && line('$') <= 1 && getline(1) == ''
   let s:wipebuf = bufnr('%')
 endif
 set shortmess=aoO
 argglobal
 %argdel
-$argadd .ycm_extra_conf.py
-edit ~/projects/Bomber/README.md
+$argadd ~/projects/Bomber/.ycm_extra_conf.py
+edit ~/projects/Bomber/src/bomber.cpp
 set splitbelow splitright
 set nosplitbelow
 set nosplitright
@@ -30,28 +30,100 @@ setlocal fdl=99
 setlocal fml=1
 setlocal fdn=20
 setlocal fen
-let s:l = 5 - ((4 * winheight(0) + 13) / 26)
+137
+normal! zo
+148
+normal! zo
+172
+normal! zo
+225
+normal! zo
+251
+normal! zo
+274
+normal! zo
+443
+normal! zo
+462
+normal! zo
+512
+normal! zo
+595
+normal! zo
+606
+normal! zo
+629
+normal! zo
+639
+normal! zo
+641
+normal! zo
+643
+normal! zo
+711
+normal! zo
+722
+normal! zo
+749
+normal! zo
+839
+normal! zo
+843
+normal! zo
+964
+normal! zo
+988
+normal! zo
+1048
+normal! zo
+1073
+normal! zo
+1075
+normal! zo
+1075
+normal! zo
+1082
+normal! zo
+1099
+normal! zo
+1139
+normal! zo
+1142
+normal! zo
+1236
+normal! zo
+1284
+normal! zo
+1293
+normal! zo
+1295
+normal! zo
+1297
+normal! zo
+1344
+normal! zo
+let s:l = 1361 - ((5 * winheight(0) + 15) / 31)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-5
-normal! 08|
+1361
+normal! 0
 tabnext 1
-badd +0 ~/projects/Bomber/README.md
-badd +1 ~/projects/Bomber/.ycm_extra_conf.py
-badd +72 ~/projects/Bomber/.gitignore
+badd +168 ~/projects/Bomber/src/bomber.cpp
+badd +76 ~/projects/Bomber/.ycm_extra_conf.py
+badd +1 ~/projects/Bomber/.gitignore
+badd +398 ~/.vim/_vimrc
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0
   silent exe 'bwipe ' . s:wipebuf
 endif
 unlet! s:wipebuf
-set winheight=1 winwidth=20 shortmess=ac
+set winheight=1 winwidth=20 shortmess=a
 set winminheight=1 winminwidth=1
 let s:sx = expand("<sfile>:p:r")."x.vim"
 if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &so = s:so_save | let &siso = s:siso_save
-nohlsearch
 let g:this_session = v:this_session
 let g:this_obsession = v:this_session
 doautoall SessionLoadPost

@@ -15,7 +15,12 @@
 #include "unp.h"
 using namespace std;
 
+// 服务器端口号
 #define SERVER_PORT 34567
+
+/*
+ * 游戏设定宽高
+ */
 #define WIDTH       60
 #define HEIGHT      31
 #define INFO_WIDTH  WIDTH
@@ -24,11 +29,21 @@ using namespace std;
 #define GAME_HEIGHT 25
 #define CHAT_WIDTH  30 //(INFO_WIDTH - GAME_WIDTH)
 #define CHAT_HEIGHT HEIGHT
+
+/*
+ * 游戏运行时间间隔以10ms为单位
+ */
 #define TIME_TICKS_MS 10
 
+/*
+ * 消息最大长度
+ */
 #define MAX_MSG_LEN     4096
 #define MAX_CHATMSG_LEN 1024
 
+/*
+ * 怪物移动速率单位ms
+ */
 #define MONSTER0_SPEED 1000
 #define MONSTER1_SPEED 800
 #define MONSTER2_SPEED 600
@@ -36,6 +51,9 @@ using namespace std;
 #define MONSTER4_SPEED 200
 #define MONSTER5_SPEED 100
 
+/*
+ * 击败怪物后获得的分数
+ */
 #define MONSTER0_SCORE  10
 #define MONSTER1_SCORE  20
 #define MONSTER2_SCORE  30
@@ -43,15 +61,30 @@ using namespace std;
 #define MONSTER4_SCORE  50
 #define MONSTER5_SCORE  60
 
+/*
+ * superman是游戏中的S图标,吃掉后可以穿墙,但有时间限制
+ * 下述宏用于定义superman的持续时间
+ */
 #define SUPERMAN_TIME   30000
+
+/*
+ * 炸弹引爆前持续时间(也就是o或O这个状态持续时间)
+ */
 #define BOMB_BOMB_TIME  3000
 
+/*
+ * 炸弹引爆后持续时间(也就是x或X这个状态持续时间)
+ * BOMB_CHANGE_TIME是形状变化时间(即x->X,X->x,o->O,O->o)
+ */
 #define BOMB_BOMBING_TIME   200
 #define BOMB_CHANGE_TIME    100
 
+// Linux下没有专用的毫秒休眠,因此使用msleep来达到效果
 #define msleep(ms) usleep(ms * 1000)
  
-
+/**
+ * @brief 游戏菜单枚举
+ */
 enum
 {
     START_GAME,
@@ -60,39 +93,45 @@ enum
     EXIT,
 };
 
+/**
+ * @brief 障碍物,怪物,物品,玩家等种类枚举
+ */
 enum
 {
-    EMPTY,          // ' '                    
-    STONE,          // '@' stone
-    BOMB_SMALL,     // 'o' bomb
-    BOMB_BIG,       // 'O' 
-    MONSTER0,       // '0' monster
-    MONSTER1,       // '1' monster
-    MONSTER2,       // '2' monster
-    MONSTER3,       // '3' monster
-    MONSTER4,       // '4' monster
-    MONSTER5,       // '5' monster
-    PLAYER0,        // 'a' 
-    PLAYER1,        // 'b'
-    PLAYER2,        // 'c'
-    PLAYER3,        // 'd'
-    DOOR,           // '$' door to next level
-    BOMB_POWER_UP,        // 'P' power up
-    LIFEUP,         // 'L' life up
-    BOMB_NUM_UP,         // 'B' bomb up
+    EMPTY,          // ' ' 空地
+    STONE,          // '@' 石头(无法通过,若为superman则可以)
+    BOMB_SMALL,     // 'o' 炸弹引爆前图标
+    BOMB_BIG,       // 'O' 炸弹引爆前图标
+    MONSTER0,       // '0' 怪物0
+    MONSTER1,       // '1' 怪物1
+    MONSTER2,       // '2' 怪物2
+    MONSTER3,       // '3' 怪物3
+    MONSTER4,       // '4' 怪物4
+    MONSTER5,       // '5' 怪物5
+    PLAYER0,        // 'a' 玩家0(用字母a表示)
+    PLAYER1,        // 'b' 玩家1(用字母b表示)
+    PLAYER2,        // 'c' 玩家2(用字母c表示)
+    PLAYER3,        // 'd' 玩家3(用字母d表示)
+    DOOR,           // '$' 门,去往下一关
+    BOMB_POWER_UP,  // 'P' 炸弹威力+1
+    LIFEUP,         // 'L' 生命+1
+    BOMB_NUM_UP,    // 'B' 炸弹数量+1
     SUPERMAN,       // 'S' superman
-    TIMER_BOMB,          // 'T' timer
-    BLOCK,          // '#' block with nothing
-    BLOCK_DOOR,     // '$' door 
-    BLOCK_BOMB_POWER_UP,  // '#' block(power up)
-    BLOCK_LIFEUP,   // '#' block(life up)
-    BLOCK_BOMB_NUM_UP,   // '#' block(bomb up)
-    BLOCK_SUPERMAN,  // '#' block(superman)
-    BLOCK_TIMER_BOMB,    // '#' block(timer)
-    BOMBING0,       // 'X' bombing fire shape
-    BOMBING1,       // 'x' bombing fire shape
+    TIMER_BOMB,     // 'T' 定时炸弹
+    BLOCK,                  // '#' 墙(可被炸毁)
+    BLOCK_DOOR,             // '#' 墙(可被炸毁,含有$)
+    BLOCK_BOMB_POWER_UP,    // '#' 墙(可被炸毁,含有P)
+    BLOCK_LIFEUP,           // '#' 墙(可被炸毁,含有L) 
+    BLOCK_BOMB_NUM_UP,      // '#' 墙(可被炸毁,含有B)
+    BLOCK_SUPERMAN,         // '#' 墙(可被炸毁,含有S) 
+    BLOCK_TIMER_BOMB,       // '#' 墙(可被炸毁,含有T)
+    BOMBING0,       // 炸弹爆炸阶段形状0(即'X') 
+    BOMBING1,       // 炸弹爆炸阶段形状1(即'x')
 };
 
+/**
+ * @brief 通用结构
+ */
 struct Elem
 {
     Elem(int px, int py, int ic):
@@ -101,27 +140,33 @@ struct Elem
     int icon;
 };
 
+/**
+ * @brief 炸弹
+ */
 struct Bomb
 {
     Bomb(int px, int py, int bbtime, int ic, int pw, bool tmbomb):
         x(px),y(py),bombtime(bbtime),timetobomb(bbtime),changetime(BOMB_CHANGE_TIME),timetochange(BOMB_CHANGE_TIME),
         bombingtime(BOMB_BOMBING_TIME),timetobombingfinish(BOMB_BOMBING_TIME),bombingicon(BOMBING0),
         icon(ic),power(pw),isfirstbombing(1),timerbomb(tmbomb){};
-    int x,y;
-    int bombtime;
-    int timetobomb;  
-    int changetime;
-    int timetochange;
-    int bombingtime;
-    int timetobombingfinish;
-    int bombingicon;
-    int icon;
-    int power;
-    bool isfirstbombing;
-    bool timerbomb;
-    vector<Elem> dieds;
+    int x,y;                // 炸弹位置
+    int bombtime;           // 炸弹引爆时间
+    int timetobomb;         // 还剩多少时间将爆炸
+    int changetime;         // 炸弹形状变化时间(形状由O->o)
+    int timetochange;       // 还剩多少时间将变化形状
+    int bombingtime;        // 炸弹爆炸阶段持续时间
+    int timetobombingfinish;// 还剩多少时间炸弹爆炸阶段结束
+    int bombingicon;        // 炸弹爆炸阶段的图标(X或x)
+    int icon;               // 炸弹图标(O或o)
+    int power;              // 炸弹威力(1表示周围1格都被被炸到)
+    bool isfirstbombing;    // 用于标记是否进入爆炸阶段
+    bool timerbomb;         // 标记是否是定时炸弹
+    vector<Elem> dieds;     // 记录炸毁的物体
 };
 
+/**
+ * @brief 网络通信模块
+ */
 struct Network
 {
     Network():
@@ -130,6 +175,9 @@ struct Network
     vector<int> fdplayers;
 };
 
+/**
+ * @brief 数据包结构
+ */
 struct DataPacket
 {
     DataPacket(char* dat, int n)
@@ -147,6 +195,9 @@ struct DataPacket
     char *data;
 };
 
+/**
+ * @brief 消息数据结构
+ */
 struct ChatMsg
 {
     ChatMsg(const char* mesg, int n)
@@ -166,65 +217,95 @@ struct ChatMsg
     char *msg;
 };
 
+/**
+ * @brief 玩家,实际整个游戏只有这一个对象,可以认为这应该是管理全局数据的一个结构体
+ */
 struct Player
 {
     Player(int px, int py, int ic):
         x(px),y(py),icon(ic),score(0),life(1),bombnum(1),bombtime(BOMB_BOMB_TIME),bombpower(1),timerbomb(0),superman(0),
         supermantime(SUPERMAN_TIME),timetosupermanfinish(0),savedicon(EMPTY){};
-    int x,y;
-    int icon;
-    int score;
-    int life;
-    int bombnum;
-    int bombtime;
-    int bombpower;
-    bool timerbomb;
-    bool superman;
-    int supermantime;
-    int timetosupermanfinish;
-    int savedicon;
-    Network net;
-    vector<Bomb> bomb;
-    queue<DataPacket*> packetQue;
-    queue<ChatMsg*> msgQue;
-} player(0,0,PLAYER0);
+    int x,y;                    // 玩家坐标
+    int icon;                   // 玩家图标
+    int score;                  // 玩家分数
+    int life;                   // 玩家生命
+    int bombnum;                // 玩家炸弹数量
+    int bombtime;               // 玩家炸弹引爆时间
+    int bombpower;              // 玩家炸弹威力
+    bool timerbomb;             // 玩家是否有定时器炸弹
+    bool superman;              // 玩家是否为superman
+    int supermantime;           // 玩家superman默认时间
+    int timetosupermanfinish;   // 还剩多少时间结束superman阶段
+    int savedicon;              // 玩家当前位置原来的图标(玩家每走一个位置,都会保存那个位置图标,并将玩家自身图标覆盖那个位置)
+    Network net;                // 网络模块
+    vector<Bomb> bomb;          // 玩家炸弹记录(即玩家已经安置了几个炸弹,每个炸弹的信息)
+    queue<DataPacket*> packetQue;   // TODO: 用于以后的多人联机
+    queue<ChatMsg*> msgQue;     // 本地显示消息
+} player(0,0,PLAYER0);  // 玩家本人
 
+/**
+ * @brief 怪物基类
+ */
 struct Monster
 {
     Monster(int px, int py, int ic, int at, int sco):
         x(px),y(py),icon(ic),actiontime(at),timetoaction(at),score(sco){};
-    int x,y;
-    int icon;
-    const int actiontime;
-    int timetoaction;
-    int score;
+    int x,y;    // 怪物位置
+    int icon;   // 怪物图标
+    const int actiontime;   // 怪物移动时间间隔ms
+    int timetoaction;       // 还剩多少时间进行下一次移动
+    int score;              // 怪物包含的分数
 };
 
+/**
+ * @brief 怪物0
+ */
 struct Monster0: public Monster
 {
     Monster0(int px, int py):
         Monster(px,py,MONSTER0,MONSTER0_SPEED,MONSTER0_SCORE){}
 };
+
+/**
+ * @brief 怪物1
+ */
 struct Monster1: public Monster
 {
     Monster1(int px, int py):
         Monster(px,py,MONSTER1,MONSTER1_SPEED,MONSTER1_SCORE){}
 };
+
+/**
+ * @brief 怪物2
+ */
 struct Monster2: public Monster
 {
     Monster2(int px, int py):
         Monster(px,py,MONSTER2,MONSTER2_SPEED,MONSTER2_SCORE){}
 };
+
+/**
+ * @brief 怪物3
+ */
 struct Monster3: public Monster
 {
     Monster3(int px, int py):
         Monster(px,py,MONSTER3,MONSTER3_SPEED,MONSTER3_SCORE){}
 };
+
+
+/**
+ * @brief 怪物4
+ */
 struct Monster4: public Monster
 {
     Monster4(int px, int py):
         Monster(px,py,MONSTER4,MONSTER4_SPEED,MONSTER4_SCORE){}
 };
+
+/**
+ * @brief 怪物5
+ */
 struct Monster5: public Monster
 {
     Monster5(int px, int py):
@@ -232,7 +313,8 @@ struct Monster5: public Monster
 };
 
 /*
- * function macro
+ * DESC: function macro
+ *  功能宏,此宏用于管理全局的消息(即显示在画面右边的文字消息,包含用户聊天消息,网络消息,系统消息等等)
  */
 #define MSGQUE_PUSH(msg,n)  player.msgQue.push(new ChatMsg(msg,n))
 #define MSGQUE_FRONT()      player.msgQue.front()
@@ -240,6 +322,13 @@ struct Monster5: public Monster
 #define MSGQUE_EMPTY()      player.msgQue.empty()
 
 
+/**
+ * @brief 将本机作为服务器,监听本地端口,等待其他玩家连接
+ *
+ * @param arg
+ *
+ * @return 
+ */
 void* th_receiver(void *arg)
 {
     struct pollfd client[_POSIX_OPEN_MAX];
@@ -320,14 +409,41 @@ void* th_receiver(void *arg)
     }
 }
 
+/**
+ * @brief 生成地图数据 
+ *
+ * @param w                 地图宽
+ * @param h                 地图高
+ * @param nblock            墙数量
+ * @param nbomb_power_up    物品P数量
+ * @param nlifeup           物品L数量
+ * @param nbomb_num_up      物品B数量
+ * @param nsuperman         物品S数量
+ * @param ntimer            物品T数量
+ * @param ndoor             $数量
+ * @param nMonster0         怪物0数量
+ * @param nMonster1         怪物1数量
+ * @param nMonster2         怪物2数量 
+ * @param nMonster3         怪物3数量
+ * @param nMonster4         怪物4数量
+ * @param nMonster5         怪物5数量
+ * @param outMapArry        返回地图数据
+ * @param outMonsters       返回怪物数据
+ */
 void generate_data(int w, int h, int nblock, 
         int nbomb_power_up, int nlifeup, int nbomb_num_up, int nsuperman, int ntimer, int ndoor,
         int nMonster0,int nMonster1,int nMonster2,int nMonster3,int nMonster4, int nMonster5,
         vector<vector<int>>& outMapArry, vector<Monster*>& outMonsters)
 {
     int x, y;
+
+    // 初始地图大小为h*w
     outMapArry.resize(h,vector<int>(w,EMPTY));
+    
+    // 玩家位置(y,x),y表示行号,x表示列号
     outMapArry[player.y][player.x] = player.icon;
+
+    // 生成石块
     for (y = 0; y < h; ++y)
     {
         for (x = 0; x < w; ++x)
@@ -336,14 +452,17 @@ void generate_data(int w, int h, int nblock,
                 outMapArry[y][x]=STONE;
         }
     }
+
+    // 随机数种子
     srand(time(0));
+
+    // 生成随机物品
     while (ndoor>0||nbomb_power_up>0||nlifeup>0||nbomb_num_up>0||nsuperman>0||ntimer>0||nblock>0)
     {
         y = rand() % h;
         x = rand() % w;
-        /*
-         * block, fake door, power up, life up, bomb up, superman, timer
-         */
+
+        // 只在空地处生成
         if (outMapArry[y][x] != EMPTY) continue;
         if (ndoor > 0)
         {
@@ -386,13 +505,18 @@ void generate_data(int w, int h, int nblock,
             exit(0);
         }
     }
+
+    // 生成怪物
     while (nMonster5 > 0||nMonster4 > 0||nMonster3 > 0||nMonster2 > 0||nMonster1 > 0||nMonster0 > 0)
     {
         x = rand() % w;
         y = rand() % h;
+        
+        // 只在空地处生成
         if ((outMapArry[y][x]) != EMPTY) continue;
+
         /*
-         * keep track of monster's move
+         * 保持追踪每个怪物的坐标信息
          */
         if (nMonster0 > 0)
         {
@@ -429,11 +553,18 @@ void generate_data(int w, int h, int nblock,
             perror("error!");
             exit(0);
         }
+
+        // 设置怪物图标
         outMapArry[y][x] = outMonsters.back()->icon;
     }
 }
 
 
+/**
+ * @brief 刷新信息窗口(信息窗口是界面最上方的窗口,包含玩家分数等等信息)
+ *
+ * @param ptrInfoWin 信息窗口对象
+ */
 void refresh_info_win(WINDOW *ptrInfoWin)
 {
     char buf[128];
@@ -451,18 +582,28 @@ void refresh_info_win(WINDOW *ptrInfoWin)
     wrefresh(ptrInfoWin);
 }
 
+/**
+ * @brief 刷新游戏窗口(游戏窗口为信息窗口下方的窗口)
+ *
+ * @param ptrGameWin 游戏窗口对象
+ * @param mapArry 游戏地图数据
+ * @param monsters 游戏怪物数据
+ * @param passedms 游戏刷新间隔
+ */
 void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<Monster*>& monsters, int passedms)
 {
-    /*
-     * bombing action
-     */
     int dx[] = {-1,1,0,0};
     int dy[] = {0,0,-1,1};
     int x, y, h, w, ch;
     h = mapArry.size();
     w = mapArry[0].size();
+
+    /*
+     * 处理炸弹
+     */
     for (auto it = player.bomb.begin(); it != player.bomb.end(); )
     {
+        // 如果炸弹还处于引爆阶段,那么就让它一直变形(o->O,O->o)
         if (it->timetobomb > 0 || it->timerbomb)
         {
             /*
@@ -481,13 +622,19 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                 mapArry[it->y][it->x] = it->icon;
             }
         }
+
+        // 如果炸弹已经到了爆炸阶段
         if (it->timetobomb <= 0)
         {
             /*
-             * start bombing
+             * 炸弹已经处于爆炸阶段,持续时间为timetobombingfinish
              */
             it->timetobombingfinish -= passedms;
-            if (it->timetobombingfinish <= 0) // bombing finished
+
+            /*
+             * 炸弹爆炸结束,处理爆炸后受到炸弹影响的位置处的图标
+             */
+            if (it->timetobombingfinish <= 0) 
             {
                 for (auto& deadelem : it->dieds)
                 {
@@ -554,26 +701,53 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                             break;
                     }
                 }
+                
+                // 这颗炸弹已经完成了它的使命,可以销毁了
                 it=player.bomb.erase(it);
                 continue;
             }
-            else // during the bombing
+            else  // 炸弹爆炸期间
             {
-                if (it->timetobombingfinish <= 100 && it->bombingicon != BOMBING1) // change bombing shape
+                // 离炸弹爆炸结束时间小于100ms时,变化爆炸图标由X->x,给人一种火焰变小的动态感
+                if (it->timetobombingfinish <= 100 && it->bombingicon != BOMBING1) 
                 {
                     it->bombingicon = BOMBING1;
                     for (auto& deadelem : it->dieds)
                         mapArry[deadelem.y][deadelem.x] = it->bombingicon;
                 }
 
+                // 是否是刚刚从引爆阶段到达爆炸阶段(即刚刚爆炸)
                 if (it->isfirstbombing)
                 {
+                    // 刚刚爆炸,则需要记录爆炸时影响到的各个位置和怪物信息
+                    // 且将炸弹爆炸期间炸到的位置信息和物品放入
                     it->isfirstbombing=false;
                     it->dieds.push_back(Elem(it->x,it->y,EMPTY));
                     mapArry[it->y][it->x] = it->bombingicon;
+
+                    /*
+                     * 从4个方向来进行处理
+                     * 比如:    #
+                     *          #
+                     *         @o@
+                     *
+                     *          #
+                     *
+                     *  #墙,@石头,o炸弹,如果炸弹威力为2,则爆炸时如下
+                     *          #
+                     *          X
+                     *         @X@
+                     *          X
+                     *          X
+                     *  因为炸弹不能一次穿过两堵墙#,因此在某个方向上只要遇到第一堵墙#,则该方向上炸弹威力耗尽
+                     *  炸弹是不能炸毁石头的,因此两边的石头@没变化
+                     *  但遇到怪物,空地或者玩家,则不会对炸弹威力有影响
+                     *  可以结合实际想象一下
+                     */
                     for (int i=0;i<4;++i)
                     {
-                        bool flag=false;    // has bombed in this direction
+                        bool flag=false;    // 用于标记是否该方向上炸弹威力耗尽
+                        // 在该方向上处理炸弹爆炸后的影响
                         for (int k=1;k<=it->power;++k)
                         {
                             int nx=it->x+k*dx[i],ny=it->y+k*dy[i];
@@ -658,15 +832,18 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
     }
 
     /*
-     * monster move
+     * 怪物移动处理
      */
     for (auto it = monsters.begin(); it != monsters.end(); )
     {
         Monster* ptrMon = *it;
         ptrMon->timetoaction -= passedms;
-        if (ptrMon->timetoaction <= 0)
+        if (ptrMon->timetoaction <= 0) // 怪物可以移动了
         {
-            ptrMon->timetoaction = ptrMon->actiontime;
+            // 下一轮移动需要等待的时间
+            ptrMon->timetoaction = ptrMon->actiontime;  
+
+            // 先将怪物当前位置置空,再计算新的位置
             mapArry[ptrMon->y][ptrMon->x] = EMPTY;
             int nx = ptrMon->x, ny = ptrMon->y;
             for (;;)
@@ -677,6 +854,8 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
                 if (nx >= 0 && nx < w && ny >= 0 && ny < h)
                     break;
             }
+
+            // 新位置更新
             switch (mapArry[ny][nx])
             {
                 case EMPTY:
@@ -706,7 +885,8 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
 
 
     /*
-     * others
+     * 其他处理:
+     *  玩家superman时间处理
      */
     if (player.superman)
     {
@@ -719,7 +899,7 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
     }
 
     /*
-     * map
+     * 显示新的地图
      */
     for (y = 0; y < h; ++y)
     {
@@ -764,14 +944,24 @@ void refresh_game_win(WINDOW *ptrGameWin, vector<vector<int>>& mapArry, vector<M
             mvwaddch(ptrGameWin, y+1, x+1, ch);
         }
     }
+
+    // 点亮窗口
     touchwin(ptrGameWin);
+
+    // 刷新窗口
     wrefresh(ptrGameWin);
 }
 
 
 
+/**
+ * @brief 刷新聊天窗口
+ *
+ * @param ptrChatWin 聊天窗口
+ */
 void refresh_chat_win(WINDOW *ptrChatWin)
 {
+    // 从消息队列中取出消息,加载到聊天窗口中
     while (!MSGQUE_EMPTY())
     {
         ChatMsg* ptrMsg = MSGQUE_FRONT();   
@@ -779,10 +969,20 @@ void refresh_chat_win(WINDOW *ptrChatWin)
         wprintw(ptrChatWin, ptrMsg->msg);
         delete ptrMsg;
     }
+
+    // 点亮窗口
     touchwin(ptrChatWin);
+
+    // 刷新窗口
     wrefresh(ptrChatWin);
 }
 
+/**
+ * @brief 刷新菜单界面
+ *
+ * @param ptrWelcomeWin 菜单窗口
+ * @param choose 用户选项
+ */
 void refresh_welcome_win(WINDOW* ptrWelcomeWin, int choose)
 {
     char buf[COLS];
@@ -832,12 +1032,23 @@ void refresh_welcome_win(WINDOW* ptrWelcomeWin, int choose)
         perror("error");exit(0);
     }
 
+    // 点亮窗口
     touchwin(ptrWelcomeWin);
+
+    // 刷新窗口
     wrefresh(ptrWelcomeWin);        
 }
+
+
+/**
+ * @brief 开始游戏
+ */
 void start_game()
 {
     int ch;
+    /*
+     * 创建3个窗口: 信息窗口(最上方),游戏窗口(下方),聊天窗口(右边)
+     */
     WINDOW *ptrInfoWin = newwin(INFO_HEIGHT,INFO_WIDTH,0,0);
     box(ptrInfoWin, ACS_VLINE, ACS_HLINE);
     WINDOW *ptrGameWin = newwin(GAME_HEIGHT, GAME_WIDTH, INFO_HEIGHT, 0);
@@ -846,6 +1057,8 @@ void start_game()
     //box(ptrChatWin, ACS_VLINE, ACS_HLINE);
     vector<Monster*> monsters;
     vector<vector<int>> mapArry;
+
+    // 生成地图数据
     generate_data(GAME_WIDTH-2, GAME_HEIGHT-2, 
             100,
             // powerup,bombup,lifeup,superman,timer
@@ -853,6 +1066,8 @@ void start_game()
             1, 
             10,10,10,10,10,10, 
             mapArry, monsters);
+
+    // 获取用户选项,并进行处理,刷新游戏地图
     for(;;)
     {
         if ((ch = tolower(getch())) != ERR)
@@ -864,30 +1079,31 @@ void start_game()
                 int flag=false;
                 switch (tolower(ch))
                 {
-                    case KEY_UP:    
+                    case KEY_UP:    // 上   
                         ny--; 
                         flag=true;
                         break;
-                    case KEY_DOWN:  
+                    case KEY_DOWN:  // 下
                         ny++; 
                         flag=true;
                         break;
-                    case KEY_LEFT:  
+                    case KEY_LEFT:  // 左
                         nx--; 
                         flag=true;
                         break;
-                    case KEY_RIGHT: 
+                    case KEY_RIGHT: // 右
                         nx++; 
                         flag=true;
                         break;
-                    case ' ':
+                    case ' ':   // 空格放置炸弹
+                        // 放置炸弹数量不能超过玩家可放置数量
                         if (player.bombnum > (int)player.bomb.size())
                         {
                             if (player.savedicon == EMPTY)
                                 player.bomb.push_back(Bomb(nx,ny,player.bombtime, BOMB_SMALL, player.bombpower, player.timerbomb));
                         }
                         break;
-                    case 's': // timer bomb
+                    case 's': // s键定时炸弹爆炸
                         if (player.timerbomb)
                         {
                             for (auto& b : player.bomb)
@@ -901,7 +1117,7 @@ void start_game()
                             }
                         }
                         break;
-                    case 'o': // open network
+                    case 'o':   // o键开放网络,运行外部接入
                     {
                         if (!player.net.isopen)
                         {
@@ -911,18 +1127,19 @@ void start_game()
                         }
                         break;
                     }
-                    case 'q':
+                    case 'q':   // q键退出,返回到主菜单
                         goto exit;
                         break;
                     default:
                         break;
                 }
-                if (flag&&nx>=0&&nx<w&&ny>=0&&ny<h) // actually moved
+
+                if (flag&&nx>=0&&nx<w&&ny>=0&&ny<h) // 有效移动
                 {
-                    mapArry[oldy][oldx]=player.savedicon;   // restore old icon
+                    mapArry[oldy][oldx]=player.savedicon;   // 恢复旧图标
                     switch (mapArry[ny][nx])
                     {
-                        case EMPTY:          // ' '                    
+                        case EMPTY:          // ' '
                             player.savedicon=mapArry[ny][nx];
                             player.x = nx, player.y = ny;
                             break;
@@ -1002,12 +1219,23 @@ void start_game()
                 }
                 mapArry[player.y][player.x] = player.icon;
         }
+
+        // 刷新信息窗口
         refresh_info_win(ptrInfoWin);
+
+        // 刷新游戏窗口
         refresh_game_win(ptrGameWin, mapArry, monsters, TIME_TICKS_MS);
+
+        // 刷新聊天窗口
         refresh_chat_win(ptrChatWin);
+
+        // 休眠游戏间隔ms
         msleep(TIME_TICKS_MS);
     }
 exit:
+    /*
+     * 内存销毁
+     */
     for (auto& ptrMon : monsters)
         delete ptrMon;
     delwin(ptrInfoWin);
@@ -1015,6 +1243,9 @@ exit:
     delwin(ptrChatWin);
 }
 
+/**
+ * @brief 加入游戏
+ */
 void join_game()
 {
     /*
@@ -1022,6 +1253,9 @@ void join_game()
      */ 
 }
 
+/**
+ * @brief 游戏介绍
+ */
 void about_game()
 {
     /*
@@ -1029,6 +1263,9 @@ void about_game()
      */
 }
 
+/**
+ * @brief 退出游戏
+ */
 void exit_game()
 {
     /*
@@ -1039,12 +1276,18 @@ void exit_game()
     exit(0);
 }
 
+/**
+ * @brief 游戏循环
+ */
 void game_loop()
 {
     int ch;
+    // 新建菜单窗口
     WINDOW *ptrWelcomeWin = newwin(HEIGHT,WIDTH,0,0);
     box(ptrWelcomeWin,ACS_VLINE,ACS_HLINE);
     int choose = START_GAME;
+
+    // 游戏菜单界面,等待用户选项
     for(;;)
     {
         if ((ch = getch()) != ERR)
@@ -1088,23 +1331,31 @@ void game_loop()
     }
 }
 
+/**
+ * @brief 开始游戏
+ *
+ * @param argc
+ * @param argv
+ *
+ * @return 
+ */
 int main(int argc, char** argv)
 {
-    initscr();
-    cbreak();
-    noecho();
-    keypad(stdscr,TRUE);
-    nodelay(stdscr,true);
-    curs_set(0);
-    if (!has_colors())
+    initscr();              // 初始化curses库
+    cbreak();               // 采用break模式
+    noecho();               // 不进行echo显示
+    keypad(stdscr,TRUE);    // 把功能键映射为一个值
+    nodelay(stdscr,true);   // getch变为不需等待(即异步),用户没输入时自动返回ERR
+    curs_set(0);            // 不显示光标
+    if (!has_colors())      // 是否支持彩色显示
     {
         exit(1);    
     }
-    if (start_color()!=OK)
+    if (start_color()!=OK)  // 开启彩色显示支持
     {
         exit(1);
     }
-    game_loop();
+    game_loop(); // 开始游戏循环
     endwin();
     exit(0);
 }
